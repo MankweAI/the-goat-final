@@ -1,0 +1,11 @@
+﻿CREATE INDEX IF NOT EXISTS users_whatsapp_psid_idx ON public.users(whatsapp_psid);
+CREATE INDEX IF NOT EXISTS users_current_topic_idx ON public.users(current_topic) WHERE current_topic IS NOT NULL;
+CREATE INDEX IF NOT EXISTS mcqs_difficulty_last_served_idx ON public.mcqs(difficulty, last_served_at);
+CREATE INDEX IF NOT EXISTS mcqs_difficulty_topic_last_served_idx ON public.mcqs(difficulty, topic, last_served_at);
+CREATE INDEX IF NOT EXISTS mcqs_easy_last_served_idx ON public.mcqs(last_served_at) WHERE difficulty='easy';
+CREATE INDEX IF NOT EXISTS mcqs_medium_last_served_idx ON public.mcqs(last_served_at) WHERE difficulty='medium';
+CREATE INDEX IF NOT EXISTS mcqs_hard_last_served_idx ON public.mcqs(last_served_at) WHERE difficulty='hard';
+CREATE INDEX IF NOT EXISTS user_weaknesses_user_idx ON public.user_weaknesses(user_id);
+CREATE INDEX IF NOT EXISTS user_weaknesses_tag_idx ON public.user_weaknesses(weakness_tag);
+CREATE INDEX IF NOT EXISTS user_answers_user_answered_idx ON public.user_answers(user_id, answered_at DESC);
+CREATE INDEX IF NOT EXISTS user_answers_mcq_idx ON public.user_answers(mcq_id);
