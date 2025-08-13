@@ -87,12 +87,24 @@ function capitalize(s = '') {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// ---------- ManyChat (WhatsApp) Sender ----------
+// FIXED: Using the correct /fb/ sending endpoint and robust error logging.
 async function sendManyChatReply(subscriberId, text) {
-  const token = reqEnv('MANYCHAT_API_TOKEN');
-  if (!subscriberId) throw new Error('Missing subscriberId for sendManyChatReply');
+  // This function requires the environment variable to be loaded.
+  // In your main handler, ensure you have a check for process.env.MANYCHAT_API_TOKEN
+  const token = process.env.MANYCHAT_API_TOKEN;
 
-  const url = 'https://api.manychat.com/wa/sending/sendContent';
+  if (!subscriberId) {
+    console.error('ERROR: Missing subscriberId for sendManyChatReply');
+    throw new Error('Missing subscriberId for sendManyChatReply');
+  }
+  if (!token) {
+    console.error('ERROR: Missing MANYCHAT_API_TOKEN environment variable.');
+    throw new Error('Missing MANYCHAT_API_TOKEN');
+  }
+
+  // This is the correct endpoint for accounts managed under the /fb/ infrastructure.
+  const url = 'https://api.manychat.com/fb/sending/sendContent';
+
   const payload = {
     subscriber_id: subscriberId,
     data: {
@@ -101,33 +113,47 @@ async function sendManyChatReply(subscriberId, text) {
         messages: [
           {
             type: 'text',
-            text
+            text: text
           }
         ]
       }
     }
   };
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
+  console.log(`Attempting to send to: ${url}`);
+  console.log(`With subscriberId: ${subscriberId}`);
 
-  const bodyText = await res.text();
-  if (!res.ok) {
-    // Provide trimmed error log for debugging
-    console.error('ManyChat WA send failed', {
-      status: res.status,
-      body: bodyText.slice(0, 500)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
     });
-    throw new Error(`ManyChat send error ${res.status}`);
+
+    // Check if the response is OK (status in the range 200-299)
+    if (res.ok) {
+      const responseData = await res.json();
+      console.log('✅ ManyChat reply sent successfully:', responseData);
+      return responseData;
+    } else {
+      // If not OK, log the failure details
+      const errorBodyText = await res.text();
+      console.error('❌ ManyChat send failed', {
+        status: res.status,
+        statusText: res.statusText,
+        body: errorBodyText.slice(0, 500) // Trim body to avoid flooding logs
+      });
+      throw new Error(`ManyChat API error ${res.status}`);
+    }
+  } catch (error) {
+    console.error('❌ Exception caught in sendManyChatReply:', error);
+    throw error; // Re-throw the error to be handled by the main handler
   }
-  return bodyText;
 }
+
 
 // ---------- User & Question Logic ----------
 async function findOrCreateUser(supabase, subscriberId) {
