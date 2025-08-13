@@ -87,7 +87,7 @@ function capitalize(s = '') {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// FIXED: Using Facebook Messenger endpoint with proper message tag handling
+// FIXED: Using Facebook Messenger endpoint with correct message tags
 async function sendManyChatReply(psid, message) {
   try {
     console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
@@ -101,10 +101,33 @@ async function sendManyChatReply(psid, message) {
     // Correct Facebook Messenger endpoint
     const url = 'https://api.manychat.com/fb/sending/sendContent';
 
-    // Facebook Messenger payload with message tag for 24h+ window
+    // Try different message tags in order of preference
+    const messageTags = [
+      'CONFIRMED_EVENT_UPDATE',
+      'POST_PURCHASE_UPDATE',
+      'ACCOUNT_UPDATE',
+      'HUMAN_AGENT'
+    ];
+
+    for (const tag of messageTags) {
+      const success = await tryMessageTag(url, token, psid, message, tag);
+      if (success) return true;
+    }
+
+    // If all tags fail, try without tag (for recent conversations)
+    console.log('🔄 All tags failed, trying without tag (recent conversation)');
+    return await sendWithoutTag(url, token, psid, message);
+  } catch (error) {
+    console.error('❌ Exception in sendManyChatReply:', error);
+    return false;
+  }
+}
+
+async function tryMessageTag(url, token, psid, message, tag) {
+  try {
     const payload = {
       subscriber_id: psid,
-      message_tag: 'NON_PROMOTIONAL_SUBSCRIPTION',
+      message_tag: tag,
       data: {
         version: 'v2',
         content: {
@@ -118,10 +141,7 @@ async function sendManyChatReply(psid, message) {
       }
     };
 
-    console.log(
-      `🔄 Attempting FB send with NON_PROMOTIONAL_SUBSCRIPTION tag:`,
-      JSON.stringify(payload, null, 2)
-    );
+    console.log(`🔄 Attempting FB send with ${tag} tag`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -132,36 +152,23 @@ async function sendManyChatReply(psid, message) {
       body: JSON.stringify(payload)
     });
 
-    console.log(`📥 API Response Status: ${response.status}`);
-
     if (response.ok) {
       const responseData = await response.json();
-      console.log(`✅ Message sent successfully:`, responseData);
+      console.log(`✅ Message sent successfully with ${tag}:`, responseData);
       return true;
     }
 
     const errorText = await response.text();
-    console.error(`❌ ManyChat API failed with status ${response.status}: ${errorText}`);
-
-    // If NON_PROMOTIONAL_SUBSCRIPTION fails, try without tag for recent conversations
-    if (response.status === 400 && errorText.includes('message tag')) {
-      console.log('🔄 Trying without message tag (recent conversation)');
-      return await sendManyChatReplyWithoutTag(psid, message);
-    }
-
+    console.log(`❌ ${tag} failed: ${errorText}`);
     return false;
   } catch (error) {
-    console.error('❌ Exception in sendManyChatReply:', error);
+    console.error(`❌ Exception trying ${tag}:`, error);
     return false;
   }
 }
 
-// Fallback function for recent conversations (within 24h)
-async function sendManyChatReplyWithoutTag(psid, message) {
+async function sendWithoutTag(url, token, psid, message) {
   try {
-    const token = process.env.MANYCHAT_API_TOKEN;
-    const url = 'https://api.manychat.com/fb/sending/sendContent';
-
     const payload = {
       subscriber_id: psid,
       data: {
@@ -177,10 +184,7 @@ async function sendManyChatReplyWithoutTag(psid, message) {
       }
     };
 
-    console.log(
-      `🔄 Attempting FB send without tag (recent conversation):`,
-      JSON.stringify(payload, null, 2)
-    );
+    console.log(`🔄 Attempting FB send without tag (recent conversation)`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -198,10 +202,10 @@ async function sendManyChatReplyWithoutTag(psid, message) {
     }
 
     const errorText = await response.text();
-    console.error(`❌ Fallback without tag also failed: ${errorText}`);
+    console.error(`❌ Send without tag failed: ${errorText}`);
     return false;
   } catch (error) {
-    console.error(`❌ Exception in fallback without tag:`, error);
+    console.error(`❌ Exception sending without tag:`, error);
     return false;
   }
 }
@@ -310,12 +314,11 @@ export default async function handler(req, res) {
           );
           const weaknessTag = chosen?.weakness_tag || 'that concept';
 
-          // Log weakness
+          // FIXED: Log weakness with correct column name (removed logged_at)
           if (weaknessTag) {
             const { error: weakErr } = await supabase.from('user_weaknesses').insert({
               user_id: user.id,
-              weakness_tag: weaknessTag,
-              logged_at: new Date().toISOString()
+              weakness_tag: weaknessTag
             });
             if (weakErr) {
               console.error('Weakness log error:', weakErr.message);
