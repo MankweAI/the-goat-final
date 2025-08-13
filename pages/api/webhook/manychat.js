@@ -87,70 +87,65 @@ function capitalize(s = '') {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// FIXED: Using the correct /fb/ sending endpoint and robust error logging.
-async function sendManyChatReply(subscriberId, text) {
-  // This function requires the environment variable to be loaded.
-  // In your main handler, ensure you have a check for process.env.MANYCHAT_API_TOKEN
-  const token = process.env.MANYCHAT_API_TOKEN;
-
-  if (!subscriberId) {
-    console.error('ERROR: Missing subscriberId for sendManyChatReply');
-    throw new Error('Missing subscriberId for sendManyChatReply');
-  }
-  if (!token) {
-    console.error('ERROR: Missing MANYCHAT_API_TOKEN environment variable.');
-    throw new Error('Missing MANYCHAT_API_TOKEN');
-  }
-
-  // This is the correct endpoint for accounts managed under the /fb/ infrastructure.
-  const url = 'https://api.manychat.com/fb/sending/sendContent';
-
-  const payload = {
-    subscriber_id: subscriberId,
-    data: {
-      version: 'v2',
-      content: {
-        messages: [
-          {
-            type: 'text',
-            text: text
-          }
-        ]
-      }
-    }
-  };
-
-  console.log(`Attempting to send to: ${url}`);
-  console.log(`With subscriberId: ${subscriberId}`);
-
+// FIXED: Added the required `message_tag` to the payload to comply with the 24-hour window rule.
+async function sendManyChatReply(psid, message) {
   try {
-    const res = await fetch(url, {
+    console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
+    console.log(`📝 Message: ${message}`);
+    const token = process.env.MANYCHAT_API_TOKEN;
+    if (!token) {
+        console.error('❌ FATAL: MANYCHAT_API_TOKEN is not set!');
+        return false;
+    }
+
+    // This is the primary endpoint that should now work with the added tag.
+    const url = 'https://api.manychat.com/fb/sending/sendContent';
+    
+    const payload = {
+      subscriber_id: psid,
+      data: {
+        version: "v2",
+        content: {
+          messages: [
+            {
+              type: "text",
+              text: message
+            }
+          ]
+        }
+      },
+      // *** THE FIX IS HERE ***
+      // This tag tells ManyChat this is a standard reply within the 24-hour window.
+      message_tag: "NON_PROMOTIONAL_SUBSCRIPTION" 
+    };
+
+    console.log(`🔄 Attempting to send with payload:`, JSON.stringify(payload, null, 2));
+    
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload)
     });
 
-    // Check if the response is OK (status in the range 200-299)
-    if (res.ok) {
-      const responseData = await res.json();
-      console.log('✅ ManyChat reply sent successfully:', responseData);
-      return responseData;
-    } else {
-      // If not OK, log the failure details
-      const errorBodyText = await res.text();
-      console.error('❌ ManyChat send failed', {
-        status: res.status,
-        statusText: res.statusText,
-        body: errorBodyText.slice(0, 500) // Trim body to avoid flooding logs
-      });
-      throw new Error(`ManyChat API error ${res.status}`);
-    }
+    console.log(`📥 API Response Status: ${response.status}`);
+
+    if (response.ok) {
+      const responseData = await response.json();
+      console.log(`✅ Message sent successfully:`, responseData);
+      return true;
+    } 
+    
+    // If it fails, log the specific error and stop.
+    const errorText = await response.text();
+    console.error(`❌ ManyChat API failed with status ${response.status}: ${errorText}`);
+    return false;
+
   } catch (error) {
-    console.error('❌ Exception caught in sendManyChatReply:', error);
-    throw error; // Re-throw the error to be handled by the main handler
+    console.error('❌ Exception in sendManyChatReply:', error);
+    return false;
   }
 }
 
