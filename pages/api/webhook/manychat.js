@@ -1,13 +1,13 @@
 ﻿/**
- * The GOAT - ManyChat Webhook (Facebook Messenger channel)
+ * The GOAT - ManyChat Webhook (WhatsApp channel)
  * Architecture: ManyChat (External Request) -> This API Route -> Supabase
  *
- * FB (Facebook Messenger) ManyChat API base: https://api.manychat.com
- * Correct send endpoint (v2 content): POST https://api.manychat.com/fb/sending/sendContent
+ * WA (WhatsApp) ManyChat API base: https://api.manychat.com
+ * Correct send endpoint (v2 content): POST https://api.manychat.com/wa/sending/sendContent
  *
  * Expected inbound JSON body from ManyChat External Request block:
  * {
- *   "subscriber_id": "{{user.id}}",       // ManyChat internal user id (Facebook)
+ *   "subscriber_id": "{{user.id}}",       // ManyChat internal numeric user id (WhatsApp)
  *   "message": "{{last_input}}"           // User's raw message text
  * }
  *
@@ -87,7 +87,7 @@ function capitalize(s = '') {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// FIXED: Using Facebook Messenger endpoint with correct message tags
+// FIXED: Using WhatsApp endpoint with correct WhatsApp message tags
 async function sendManyChatReply(psid, message) {
   try {
     console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
@@ -98,16 +98,11 @@ async function sendManyChatReply(psid, message) {
       return false;
     }
 
-    // Correct Facebook Messenger endpoint
-    const url = 'https://api.manychat.com/fb/sending/sendContent';
+    // Correct WhatsApp endpoint
+    const url = 'https://api.manychat.com/wa/sending/sendContent';
 
-    // Try different message tags in order of preference
-    const messageTags = [
-      'CONFIRMED_EVENT_UPDATE',
-      'POST_PURCHASE_UPDATE',
-      'ACCOUNT_UPDATE',
-      'HUMAN_AGENT'
-    ];
+    // Try different WhatsApp message tags in order of preference
+    const messageTags = ['UTILITY_UPDATE', 'ACCOUNT_UPDATE', 'PAYMENT_UPDATE'];
 
     for (const tag of messageTags) {
       const success = await tryMessageTag(url, token, psid, message, tag);
@@ -141,7 +136,7 @@ async function tryMessageTag(url, token, psid, message, tag) {
       }
     };
 
-    console.log(`🔄 Attempting FB send with ${tag} tag`);
+    console.log(`🔄 Attempting WA send with ${tag} tag`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -184,7 +179,7 @@ async function sendWithoutTag(url, token, psid, message) {
       }
     };
 
-    console.log(`🔄 Attempting FB send without tag (recent conversation)`);
+    console.log(`🔄 Attempting WA send without tag (recent conversation)`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -264,13 +259,18 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed', allowed: ['POST'] });
   }
 
-  // Accept both subscriber_id (Facebook) and psid (legacy)
+  // Accept both subscriber_id (WhatsApp) and psid (legacy)
   const subscriberId = req.body.subscriber_id || req.body.psid;
   const message = req.body.message;
 
   if (!subscriberId || !message) {
     // Spec says 400 if missing
     return res.status(400).json({ error: 'Missing subscriber_id/psid or message' });
+  }
+
+  // ManyChat WA subscriber_id should be numeric, but we won't hard-fail if not:
+  if (!/^\d+$/.test(String(subscriberId))) {
+    console.warn('Non-numeric subscriberId (WA expected numeric):', subscriberId);
   }
 
   let reply = '';
@@ -314,7 +314,7 @@ export default async function handler(req, res) {
           );
           const weaknessTag = chosen?.weakness_tag || 'that concept';
 
-          // FIXED: Log weakness with correct column name (removed logged_at)
+          // Log weakness (removed logged_at column)
           if (weaknessTag) {
             const { error: weakErr } = await supabase.from('user_weaknesses').insert({
               user_id: user.id,
