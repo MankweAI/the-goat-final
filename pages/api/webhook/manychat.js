@@ -87,7 +87,7 @@ function capitalize(s = '') {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// FIXED: Added the required `message_tag` to the payload to comply with the 24-hour window rule.
+// FIXED: Removed the message_tag completely, as it's unsupported by this specific endpoint.
 async function sendManyChatReply(psid, message) {
   try {
     console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
@@ -98,9 +98,9 @@ async function sendManyChatReply(psid, message) {
         return false;
     }
 
-    // This is the primary endpoint that should now work with the added tag.
     const url = 'https://api.manychat.com/fb/sending/sendContent';
     
+    // This is the corrected payload with the message_tag removed.
     const payload = {
       subscriber_id: psid,
       data: {
@@ -113,13 +113,10 @@ async function sendManyChatReply(psid, message) {
             }
           ]
         }
-      },
-      // *** THE FIX IS HERE ***
-      // This tag tells ManyChat this is a standard reply within the 24-hour window.
-      message_tag: "NON_PROMOTIONAL_SUBSCRIPTION" 
+      }
     };
 
-    console.log(`🔄 Attempting to send with payload:`, JSON.stringify(payload, null, 2));
+    console.log(`🔄 Attempting to send with payload (no tag):`, JSON.stringify(payload, null, 2));
     
     const response = await fetch(url, {
       method: 'POST',
@@ -138,7 +135,6 @@ async function sendManyChatReply(psid, message) {
       return true;
     } 
     
-    // If it fails, log the specific error and stop.
     const errorText = await response.text();
     console.error(`❌ ManyChat API failed with status ${response.status}: ${errorText}`);
     return false;
