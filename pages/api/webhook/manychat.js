@@ -3,7 +3,7 @@
  * Architecture: ManyChat (External Request) -> This API Route -> Supabase
  *
  * WA (WhatsApp) ManyChat API base: https://api.manychat.com
- * Correct send endpoint (v2 content): POST https://api.manychat.com/wa/sending/sendContent
+ * Correct send endpoint (v2 content): POST https://api.manychat.com/wa/subscriber/sendContent
  *
  * Expected inbound JSON body from ManyChat External Request block:
  * {
@@ -87,7 +87,7 @@ function capitalize(s = '') {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// FIXED: Using WhatsApp endpoint with correct WhatsApp message tags
+// FIXED: Using correct WhatsApp subscriber endpoint and no message tags
 async function sendManyChatReply(psid, message) {
   try {
     console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
@@ -98,109 +98,49 @@ async function sendManyChatReply(psid, message) {
       return false;
     }
 
-    // Correct WhatsApp endpoint
-    const url = 'https://api.manychat.com/wa/sending/sendContent';
+    // FIXED: Correct WhatsApp subscriber endpoint (not sending endpoint)
+    const url = 'https://api.manychat.com/wa/subscriber/sendContent';
 
-    // Try different WhatsApp message tags in order of preference
-    const messageTags = ['UTILITY_UPDATE', 'ACCOUNT_UPDATE', 'PAYMENT_UPDATE'];
+    // Simple payload without message tags (for recent conversations)
+    const payload = {
+      subscriber_id: psid,
+      data: {
+        version: 'v2',
+        content: {
+          messages: [
+            {
+              type: 'text',
+              text: message
+            }
+          ]
+        }
+      }
+    };
 
-    for (const tag of messageTags) {
-      const success = await tryMessageTag(url, token, psid, message, tag);
-      if (success) return true;
+    console.log(`🔄 Attempting WA subscriber send:`, JSON.stringify(payload, null, 2));
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    console.log(`📥 API Response Status: ${response.status}`);
+
+    if (response.ok) {
+      const responseData = await response.json();
+      console.log(`✅ Message sent successfully:`, responseData);
+      return true;
     }
 
-    // If all tags fail, try without tag (for recent conversations)
-    console.log('🔄 All tags failed, trying without tag (recent conversation)');
-    return await sendWithoutTag(url, token, psid, message);
+    const errorText = await response.text();
+    console.error(`❌ ManyChat API failed with status ${response.status}: ${errorText}`);
+    return false;
   } catch (error) {
     console.error('❌ Exception in sendManyChatReply:', error);
-    return false;
-  }
-}
-
-async function tryMessageTag(url, token, psid, message, tag) {
-  try {
-    const payload = {
-      subscriber_id: psid,
-      message_tag: tag,
-      data: {
-        version: 'v2',
-        content: {
-          messages: [
-            {
-              type: 'text',
-              text: message
-            }
-          ]
-        }
-      }
-    };
-
-    console.log(`🔄 Attempting WA send with ${tag} tag`);
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (response.ok) {
-      const responseData = await response.json();
-      console.log(`✅ Message sent successfully with ${tag}:`, responseData);
-      return true;
-    }
-
-    const errorText = await response.text();
-    console.log(`❌ ${tag} failed: ${errorText}`);
-    return false;
-  } catch (error) {
-    console.error(`❌ Exception trying ${tag}:`, error);
-    return false;
-  }
-}
-
-async function sendWithoutTag(url, token, psid, message) {
-  try {
-    const payload = {
-      subscriber_id: psid,
-      data: {
-        version: 'v2',
-        content: {
-          messages: [
-            {
-              type: 'text',
-              text: message
-            }
-          ]
-        }
-      }
-    };
-
-    console.log(`🔄 Attempting WA send without tag (recent conversation)`);
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (response.ok) {
-      const responseData = await response.json();
-      console.log(`✅ Message sent successfully without tag:`, responseData);
-      return true;
-    }
-
-    const errorText = await response.text();
-    console.error(`❌ Send without tag failed: ${errorText}`);
-    return false;
-  } catch (error) {
-    console.error(`❌ Exception sending without tag:`, error);
     return false;
   }
 }
@@ -314,10 +254,11 @@ export default async function handler(req, res) {
           );
           const weaknessTag = chosen?.weakness_tag || 'that concept';
 
-          // Log weakness (removed logged_at column)
+          // FIXED: Log weakness with mcq_id column
           if (weaknessTag) {
             const { error: weakErr } = await supabase.from('user_weaknesses').insert({
               user_id: user.id,
+              mcq_id: question.id, // FIXED: Added required mcq_id
               weakness_tag: weaknessTag
             });
             if (weakErr) {
