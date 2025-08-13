@@ -3,7 +3,7 @@
  * Architecture: ManyChat (External Request) -> This API Route -> Supabase
  *
  * WA (WhatsApp) ManyChat API base: https://api.manychat.com
- * Correct send endpoint: POST https://api.manychat.com/wa/sending/sendContent
+ * Correct send endpoint: POST https://api.manychat.com/wa/messages
  *
  * Expected inbound JSON body from ManyChat External Request block:
  * {
@@ -87,107 +87,12 @@ function capitalize(s = '') {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// FIXED: Using correct ManyChat WhatsApp API v1 endpoint
+// Note: We don't actually send messages via API - ManyChat will handle display
+// This function would be used if we needed direct API sending
 async function sendManyChatReply(psid, message) {
-  try {
-    console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
-    console.log(`📝 Message: ${message}`);
-    const token = process.env.MANYCHAT_API_TOKEN;
-    if (!token) {
-      console.error('❌ FATAL: MANYCHAT_API_TOKEN is not set!');
-      return false;
-    }
-
-    // FIXED: Using ManyChat WhatsApp API v1 endpoint (simpler structure)
-    const url = 'https://api.manychat.com/wa/messages';
-
-    // Simplified v1 payload structure
-    const payload = {
-      subscriber_id: psid,
-      type: 'text',
-      text: message
-    };
-
-    console.log(`🔄 Attempting WA v1 send:`, JSON.stringify(payload, null, 2));
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    console.log(`📥 API Response Status: ${response.status}`);
-
-    if (response.ok) {
-      const responseData = await response.json();
-      console.log(`✅ Message sent successfully:`, responseData);
-      return true;
-    }
-
-    const errorText = await response.text();
-    console.error(`❌ ManyChat API failed with status ${response.status}: ${errorText}`);
-
-    // If v1 fails, try the v2 endpoint one more time
-    if (response.status === 404) {
-      console.log('🔄 Trying v2 endpoint as fallback...');
-      return await sendManyChatReplyV2(psid, message);
-    }
-
-    return false;
-  } catch (error) {
-    console.error('❌ Exception in sendManyChatReply:', error);
-    return false;
-  }
-}
-
-// Fallback v2 endpoint attempt
-async function sendManyChatReplyV2(psid, message) {
-  try {
-    const token = process.env.MANYCHAT_API_TOKEN;
-    const url = 'https://api.manychat.com/wa/sending/sendContent';
-
-    const payload = {
-      subscriber_id: psid,
-      data: {
-        version: 'v2',
-        content: {
-          messages: [
-            {
-              type: 'text',
-              text: message
-            }
-          ]
-        }
-      }
-    };
-
-    console.log(`🔄 Fallback v2 attempt:`, JSON.stringify(payload, null, 2));
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (response.ok) {
-      const responseData = await response.json();
-      console.log(`✅ V2 fallback successful:`, responseData);
-      return true;
-    }
-
-    const errorText = await response.text();
-    console.error(`❌ V2 fallback also failed: ${errorText}`);
-    return false;
-  } catch (error) {
-    console.error(`❌ Exception in v2 fallback:`, error);
-    return false;
-  }
+  // For now, just log what we would send
+  console.log(`📝 Would send to PSID ${psid}: ${message}`);
+  return true;
 }
 
 // ---------- User & Question Logic ----------
@@ -259,7 +164,11 @@ export default async function handler(req, res) {
   }
 
   let reply = '';
-  let replySent = false;
+  let responseData = {
+    status: 'success',
+    echo: '', // FIXED: ManyChat expects this field
+    elapsed_ms: 0
+  };
 
   try {
     const supabase = getSupabaseClient();
@@ -364,29 +273,23 @@ export default async function handler(req, res) {
       }
     }
 
-    await sendManyChatReply(subscriberId, reply);
-    replySent = true;
+    // FIXED: Set the reply as the echo field that ManyChat expects
+    responseData.echo = reply;
+    responseData.elapsed_ms = Date.now() - start;
+
+    console.log(`✅ Webhook processed successfully. Reply: ${reply}`);
   } catch (err) {
     console.error('Webhook processing error:', {
       message: err.message,
       stack: err.stack
     });
 
-    if (!replySent) {
-      try {
-        await sendManyChatReply(
-          subscriberId,
-          `Eish, something glitched on my side. Give it a sec then try "next" again. 🙏`
-        );
-      } catch (inner) {
-        console.error('Failed to send fallback reply:', inner.message);
-      }
-    }
+    // Even on error, provide the echo field ManyChat expects
+    responseData.echo = `Eish, something glitched on my side. Give it a sec then try "next" again. 🙏`;
+    responseData.elapsed_ms = Date.now() - start;
+    responseData.error = err.message;
   } finally {
-    // Always 200 to prevent ManyChat automatic retries (unless earlier 400 for validation)
-    res.status(200).json({
-      status: 'success',
-      elapsed_ms: Date.now() - start
-    });
+    // FIXED: Always return the expected JSON structure with echo field
+    res.status(200).json(responseData);
   }
 }
