@@ -1,1063 +1,502 @@
-﻿// Multi-Subject Proactive Flow Webhook for The GOAT - DEBUGGED VERSION
-// Date: 2025-08-13 10:21:07 UTC - Fixes applied by mankwemokgabudi
-// Critical bugs fixed: session stats, question schema, code duplication
+﻿// The GOAT - ManyChat Webhook Handler
+// Author: mankwemokgabudi
+// Date: 2025-08-13 11:39:00 UTC
+// Purpose: Handle WhatsApp messages via ManyChat integration
 
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+// Environment validation
+function validateEnvironment() {
+  const required = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'MANYCHAT_API_TOKEN'];
+  const missing = required.filter((key) => !process.env[key]);
 
-// ============================================================================
-// CONSTANTS & CONFIGURATIONS
-// ============================================================================
-
-const USER_STATES = {
-  IDLE: 'idle',
-  CONSENT_PENDING: 'consent_pending',
-  SUBJECT_SELECTION: 'subject_selection',
-  TIME_PREFERENCE: 'time_preference',
-  HOOK_SENT: 'hook_sent',
-  QUESTION_SENT: 'question_sent',
-  ANSWERED_QUESTION: 'answered_question',
-  ADDITIONAL_QUESTION_SENT: 'additional_question_sent',
-  DECLINED_DAILY: 'declined_daily',
-  SESSION_COMPLETE: 'session_complete'
-};
-
-const INPUT_PATTERNS = {
-  YES: /^(yes|y|yep|sure|ja|yebo|yeah|ok|okay|👍)$/i,
-  NO: /^(no|n|nah|not now|later|nie|nope|❌)$/i,
-  MORE: /^(more|another|next|continue|again|keep going)$/i,
-  STOP: /^(stop|done|enough|finished|quit|end)$/i,
-  START: /^(start|begin|hi|hello|howzit|aweh)$/i,
-  ANSWER: /^[abcd][\)\.]?$/i,
-  TIME: /^([01]?[0-9]|2[0-3])$/
-};
-
-const PERSONA_RESPONSES = {
-  WELCOME: [
-    "Howzit legend! 🐐 I'm The GOAT - your daily practice partner for acing those exams.",
-    'Aweh! Welcome to The GOAT family 🔥 Ready to level up your knowledge game?',
-    "Yebo! You've just met your new study buddy. The GOAT is here to make learning lekker! 💪"
-  ],
-  HOOK_CTAS: [
-    'Keen for a quick challenge? Reply YES 👍',
-    'Up for testing that? Reply YES 🎯',
-    'Want to put that to practice? Reply YES 💪',
-    'Ready to flex those skills? Reply YES 🔥'
-  ],
-  MORE_CTAS: [
-    'Up for another round? Reply MORE 🚀',
-    'Want to keep the momentum? Reply MORE 💫',
-    'Ready for the next challenge? Reply MORE ⚡',
-    'Feeling sharp? Reply MORE for another 🎯'
-  ],
-  DECLINE_RESPONSES: [
-    'No stress! Catch you tomorrow 🤙',
-    'All good! See you tomorrow 👊',
-    'No worries! Tomorrow it is 🤝',
-    'Sharp! Back tomorrow then 🐐'
-  ],
-  CORRECT_RESPONSES: [
-    '🔥 Yebo! You nailed it!',
-    "Sharp! That's the one! 💪",
-    "Eish, you're on fire! 🚀",
-    'Legend! Spot on! ⚡'
-  ],
-  INCORRECT_RESPONSES: ['Aweh, close one!', 'Eish, good attempt!', 'Sharp try!', 'Almost had it!'],
-  COMPLETION: [
-    'Legend! You crushed it today. See you tomorrow for another brain workout 🧠💪',
-    'Yebo! Solid session today. Tomorrow we go again 🔥',
-    "Sharp work! Rest those brain muscles, tomorrow's another level 🚀"
-  ]
-};
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
-function normalizeUserInput(message) {
-  if (!message) return '';
-  const cleaned = message.trim().toLowerCase();
-
-  if (INPUT_PATTERNS.ANSWER.test(cleaned)) {
-    return cleaned.charAt(0).toUpperCase();
-  }
-
-  if (INPUT_PATTERNS.YES.test(cleaned)) return 'YES';
-  if (INPUT_PATTERNS.NO.test(cleaned)) return 'NO';
-  if (INPUT_PATTERNS.MORE.test(cleaned)) return 'MORE';
-  if (INPUT_PATTERNS.STOP.test(cleaned)) return 'STOP';
-  if (INPUT_PATTERNS.START.test(cleaned)) return 'START';
-  if (INPUT_PATTERNS.TIME.test(cleaned)) return 'TIME';
-
-  return cleaned;
-}
-
-function getRandomResponse(responseArray) {
-  return responseArray[Math.floor(Math.random() * responseArray.length)];
-}
-
-async function logEvent(eventType, userId, metadata = {}) {
-  try {
-    await supabase.from('events').insert({
-      user_id: userId,
-      event_type: eventType,
-      metadata: metadata
-    });
-  } catch (error) {
-    console.error('Error logging event:', error);
-  }
-}
-
-async function updateUserState(userId, newState, updates = {}) {
-  try {
-    const updateData = {
-      current_state: newState,
-      last_active_at: new Date().toISOString(),
-      ...updates
-    };
-
-    const { error } = await supabase.from('users').update(updateData).eq('id', userId);
-
-    if (error) throw error;
-    return true;
-  } catch (error) {
-    console.error('Error updating user state:', error);
+  if (missing.length > 0) {
+    console.error(`❌ Missing environment variables: ${missing.join(', ')}`);
     return false;
   }
+
+  console.log(`✅ All required environment variables present`);
+  return true;
 }
 
-// FIX #3: Updated ManyChat API payload structure
+// Enhanced ManyChat API function with multiple endpoint fallbacks
 async function sendManyChatReply(psid, message) {
   try {
-    const response = await fetch('https://api.manychat.com/fb/sender', {
+    console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
+    console.log(`📝 Message: ${message}`);
+    console.log(`🔑 API Token exists: ${!!process.env.MANYCHAT_API_TOKEN}`);
+    console.log(`🔑 Token preview: ${process.env.MANYCHAT_API_TOKEN?.substring(0, 10)}...`);
+
+    // Method 1: Try the primary ManyChat endpoint
+    console.log(`🔄 Attempting primary endpoint...`);
+
+    const payload1 = {
+      subscriber_id: psid,
+      data: {
+        version: 'v2',
+        content: {
+          messages: [
+            {
+              type: 'text',
+              text: message
+            }
+          ]
+        }
+      }
+    };
+
+    const response1 = await fetch('https://api.manychat.com/fb/sending/sendContent', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${process.env.MANYCHAT_API_TOKEN}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        subscriber_id: psid,
-        data: {
-          version: 'v2',
-          content: {
-            messages: [{ type: 'text', text: message }]
-          }
-        }
-      })
+      body: JSON.stringify(payload1)
     });
 
-    if (!response.ok) {
-      throw new Error(`ManyChat API error: ${response.status}`);
+    console.log(`📥 Primary endpoint response: ${response1.status}`);
+
+    if (response1.ok) {
+      const responseData = await response1.json();
+      console.log(`✅ Primary endpoint success:`, responseData);
+      return true;
     }
 
-    return true;
+    const error1Text = await response1.text();
+    console.log(`❌ Primary endpoint failed: ${response1.status} - ${error1Text}`);
+
+    // Method 2: Try alternative endpoint
+    console.log(`🔄 Attempting alternative endpoint...`);
+
+    const payload2 = {
+      subscriber_id: psid,
+      messages: [
+        {
+          type: 'text',
+          text: message
+        }
+      ]
+    };
+
+    const response2 = await fetch('https://api.manychat.com/fb/subscriber/sendContent', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.MANYCHAT_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload2)
+    });
+
+    console.log(`📥 Alternative endpoint response: ${response2.status}`);
+
+    if (response2.ok) {
+      const responseData = await response2.json();
+      console.log(`✅ Alternative endpoint success:`, responseData);
+      return true;
+    }
+
+    const error2Text = await response2.text();
+    console.log(`❌ Alternative endpoint failed: ${response2.status} - ${error2Text}`);
+
+    // Method 3: Try legacy endpoint
+    console.log(`🔄 Attempting legacy endpoint...`);
+
+    const payload3 = {
+      subscriber_id: psid,
+      message_text: message
+    };
+
+    const response3 = await fetch('https://api.manychat.com/fb/sending/sendText', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.MANYCHAT_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload3)
+    });
+
+    console.log(`📥 Legacy endpoint response: ${response3.status}`);
+
+    if (response3.ok) {
+      const responseData = await response3.json();
+      console.log(`✅ Legacy endpoint success:`, responseData);
+      return true;
+    }
+
+    const error3Text = await response3.text();
+    console.log(`❌ Legacy endpoint failed: ${response3.status} - ${error3Text}`);
+
+    // Method 4: Try original endpoint with simplified payload
+    console.log(`🔄 Attempting original endpoint with simple payload...`);
+
+    const payload4 = {
+      subscriber_id: psid,
+      text: message
+    };
+
+    const response4 = await fetch('https://api.manychat.com/fb/sender', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.MANYCHAT_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload4)
+    });
+
+    console.log(`📥 Original endpoint response: ${response4.status}`);
+
+    if (response4.ok) {
+      const responseData = await response4.json();
+      console.log(`✅ Original endpoint success:`, responseData);
+      return true;
+    }
+
+    const error4Text = await response4.text();
+    console.log(`❌ Original endpoint failed: ${response4.status} - ${error4Text}`);
+
+    // All methods failed
+    console.error(`❌ All ManyChat API attempts failed`);
+    console.error(`Primary: ${response1.status} - ${error1Text}`);
+    console.error(`Alternative: ${response2.status} - ${error2Text}`);
+    console.error(`Legacy: ${response3.status} - ${error3Text}`);
+    console.error(`Original: ${response4.status} - ${error4Text}`);
+
+    return false;
   } catch (error) {
-    console.error('Error sending ManyChat reply:', error);
+    console.error('❌ Exception in sendManyChatReply:', error);
     return false;
   }
 }
 
-// ============================================================================
-// DATABASE HELPER FUNCTIONS
-// ============================================================================
-
-async function findOrCreateUser(psid) {
+// Helper function to find or create user
+async function findOrCreateUser(psid, supabase) {
   try {
+    console.log(`🔍 Looking for user with PSID: ${psid}`);
+
     // Try to find existing user
-    const { data: existingUser } = await supabase
+    const { data: existingUser, error: findError } = await supabase
       .from('users')
       .select('*')
       .eq('whatsapp_psid', psid)
       .single();
 
     if (existingUser) {
+      console.log(`✅ Found existing user: ${existingUser.id}`);
       return existingUser;
     }
 
-    // Create new user
-    const { data: newUser, error } = await supabase
+    if (findError && findError.code !== 'PGRST116') {
+      console.error('❌ Error finding user:', findError);
+      throw findError;
+    }
+
+    console.log(`🆕 Creating new user for PSID: ${psid}`);
+
+    // Create new user with all required fields
+    const newUserData = {
+      whatsapp_psid: psid,
+      current_state: 'consent_pending',
+      consented_daily: false,
+      preferred_send_hour: 16,
+      timezone_offset_minutes: 120, // SAST default
+      streak_count: 0,
+      correct_answer_rate: 0.0,
+      daily_session_complete: false,
+      total_questions_answered: 0,
+      total_correct_answers: 0,
+      session_question_count: 0,
+      current_question_id: null,
+      current_subject_id: null,
+      last_active_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    console.log(`📝 Creating user with data:`, newUserData);
+
+    const { data: newUser, error: createError } = await supabase
       .from('users')
-      .insert({
-        whatsapp_psid: psid,
-        current_state: USER_STATES.CONSENT_PENDING,
-        consented_daily: false,
-        preferred_send_hour: 16,
-        timezone_offset_minutes: 120, // SAST default
-        streak_count: 0,
-        correct_answer_rate: 0.0,
-        daily_session_complete: false,
-        total_questions_answered: 0,
-        total_correct_answers: 0
-      })
+      .insert(newUserData)
       .select()
       .single();
 
-    if (error) throw error;
+    if (createError) {
+      console.error('❌ Error creating user:', createError);
+      throw createError;
+    }
 
-    await logEvent('USER_CREATED', newUser.id, { psid });
+    console.log(`✅ Created new user: ${newUser.id}`);
     return newUser;
   } catch (error) {
-    console.error('Error finding/creating user:', error);
+    console.error('❌ Error finding/creating user:', error);
     return null;
   }
 }
 
-async function getUserSubjectPreferences(userId) {
+// Helper function to update user state
+async function updateUserState(userId, newState, supabase) {
   try {
-    const { data, error } = await supabase
-      .from('user_subject_preferences')
-      .select(
-        `
-        *,
-        subjects:subject_id (
-          id, name, display_name, icon_emoji
-        )
-      `
-      )
-      .eq('user_id', userId)
-      .eq('is_enabled', true)
-      .order('priority_order');
-
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error('Error getting user subject preferences:', error);
-    return [];
-  }
-}
-
-async function getActiveSubjects() {
-  try {
-    const { data, error } = await supabase
-      .from('subjects')
-      .select('*')
-      .eq('is_active', true)
-      .order('sort_order');
-
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error('Error getting active subjects:', error);
-    return [];
-  }
-}
-
-// FIX #1: Get or create current daily session
-async function getCurrentDailySession(userId) {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-
-    // Try to find existing session
-    const { data: session } = await supabase
-      .from('daily_sessions')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('session_date', today)
-      .single();
-
-    if (session) {
-      return session;
-    }
-
-    // Create new session if none exists
-    const { data: newSession, error } = await supabase
-      .from('daily_sessions')
-      .insert({
-        user_id: userId,
-        session_date: today,
-        questions_answered: 0,
-        questions_correct: 0,
-        hook_accepted: null
+    const { error } = await supabase
+      .from('users')
+      .update({
+        current_state: newState,
+        updated_at: new Date().toISOString(),
+        last_active_at: new Date().toISOString()
       })
-      .select()
-      .single();
+      .eq('id', userId);
 
-    if (error) throw error;
-    return newSession;
+    if (error) {
+      console.error('❌ Error updating user state:', error);
+      return false;
+    }
+
+    console.log(`✅ Updated user ${userId} state to: ${newState}`);
+    return true;
   } catch (error) {
-    console.error('Error getting daily session:', error);
-    return { questions_answered: 0, questions_correct: 0 };
+    console.error('❌ Exception updating user state:', error);
+    return false;
   }
 }
 
-// ============================================================================
-// CONTENT SELECTION FUNCTIONS
-// ============================================================================
+// Handle consent pending state
+async function handleConsentPending(user, userMessage, psid, supabase) {
+  const message = userMessage.toLowerCase().trim();
 
-async function selectAdaptiveSubject(userId) {
-  try {
-    const userPrefs = await getUserSubjectPreferences(userId);
-
-    if (userPrefs.length === 0) {
-      const subjects = await getActiveSubjects();
-      return subjects[0] || null;
-    }
-
-    // Get user's recent answer data for weakness analysis
-    const { data: recentAnswers } = await supabase
-      .from('events')
-      .select('metadata')
-      .eq('user_id', userId)
-      .eq('event_type', 'ANSWER_SUBMITTED')
-      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      .order('created_at', { ascending: false })
-      .limit(20);
-
-    // Analyze weaknesses by subject
-    const subjectStats = {};
-    recentAnswers?.forEach((answer) => {
-      const subjectId = answer.metadata?.subject_id;
-      const correct = answer.metadata?.correct;
-
-      if (subjectId) {
-        if (!subjectStats[subjectId]) {
-          subjectStats[subjectId] = { total: 0, correct: 0 };
-        }
-        subjectStats[subjectId].total++;
-        if (correct) subjectStats[subjectId].correct++;
-      }
-    });
-
-    // Find weakest subject from user preferences
-    let weakestSubject = null;
-    let lowestRate = 1.0;
-
-    for (const pref of userPrefs) {
-      const subjectId = pref.subject_id;
-      const stats = subjectStats[subjectId];
-
-      if (stats && stats.total >= 3) {
-        const rate = stats.correct / stats.total;
-        if (rate < lowestRate) {
-          lowestRate = rate;
-          weakestSubject = pref.subjects;
-        }
-      }
-    }
-
-    return weakestSubject || userPrefs[0].subjects;
-  } catch (error) {
-    console.error('Error selecting adaptive subject:', error);
-    const subjects = await getActiveSubjects();
-    return subjects[0] || null;
+  if (message === 'yes' || message === 'y' || message === 'yebo' || message === 'ja') {
+    // User consented
+    await updateUserState(user.id, 'subject_selection', supabase);
+    const response = `Yebo! 🔥 Welcome to The GOAT family!\n\nWhich math topic needs work today?\n\n1️⃣ Algebra\n2️⃣ Geometry\n3️⃣ Trigonometry\n4️⃣ Calculus\n\nJust send the number! 🎯`;
+    await sendManyChatReply(psid, response);
+  } else if (message === 'no' || message === 'n' || message === 'nah') {
+    // User declined
+    const response = `No worries! 😊 When you're ready to ace those math exams, just send YES! 🐐`;
+    await sendManyChatReply(psid, response);
+  } else {
+    // Unclear response
+    const response = `Howzit! 🐐 Welcome to The GOAT - your daily math practice buddy!\n\nReady to ace those exams? Send YES to get started! 💪\n\n(Send YES or NO)`;
+    await sendManyChatReply(psid, response);
   }
 }
 
-async function selectAdaptiveHook(userId, subjectId) {
-  try {
-    const { data: recentHooks } = await supabase
-      .from('events')
-      .select('metadata')
-      .eq('user_id', userId)
-      .eq('event_type', 'HOOK_SENT')
-      .gte('created_at', new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString())
-      .order('created_at', { ascending: false });
+// Handle subject selection state
+async function handleSubjectSelection(user, userMessage, psid, supabase) {
+  const message = userMessage.trim();
 
-    const recentHookIds = recentHooks?.map((h) => h.metadata?.hook_id).filter(Boolean) || [];
+  const subjects = {
+    1: 'Algebra',
+    2: 'Geometry',
+    3: 'Trigonometry',
+    4: 'Calculus'
+  };
 
-    let query = supabase
-      .from('hooks')
-      .select('*')
-      .eq('subject_id', subjectId)
-      .order('usage_count')
-      .order('last_served_at', { ascending: true, nullsFirst: true })
-      .limit(5);
-
-    if (recentHookIds.length > 0) {
-      query = query.not('id', 'in', `(${recentHookIds.join(',')})`);
-    }
-
-    const { data: hooks, error } = await query;
-
-    if (error) throw error;
-
-    if (!hooks || hooks.length === 0) {
-      // Fallback: get any hook for this subject
-      const { data: fallbackHooks } = await supabase
-        .from('hooks')
-        .select('*')
-        .eq('subject_id', subjectId)
-        .order('usage_count')
-        .limit(1);
-
-      return fallbackHooks?.[0] || null;
-    }
-
-    return hooks[0];
-  } catch (error) {
-    console.error('Error selecting adaptive hook:', error);
-    return null;
+  if (subjects[message]) {
+    // Valid subject selected
+    await updateUserState(user.id, 'time_preference', supabase);
+    const response = `Sharp choice! 📚 ${subjects[message]} it is!\n\nWhen should I send your daily practice?\n\n🌅 Morning (8AM)\n🌞 Afternoon (2PM) \n🌆 Evening (6PM)\n\nJust say Morning, Afternoon, or Evening! ⏰`;
+    await sendManyChatReply(psid, response);
+  } else {
+    // Invalid selection
+    const response = `Eish, I didn't catch that! 🤔\n\nWhich math topic needs work?\n\n1️⃣ Algebra\n2️⃣ Geometry\n3️⃣ Trigonometry\n4️⃣ Calculus\n\nJust send the number (1, 2, 3, or 4)! 🎯`;
+    await sendManyChatReply(psid, response);
   }
 }
 
-async function selectAdaptiveQuestion(userId, subjectId, targetDifficulty = 'medium') {
-  try {
-    const { data: recentQuestions } = await supabase
-      .from('events')
-      .select('metadata')
-      .eq('user_id', userId)
-      .eq('event_type', 'QUESTION_SERVED')
-      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-      .order('created_at', { ascending: false });
+// Handle time preference state
+async function handleTimePreference(user, userMessage, psid, supabase) {
+  const message = userMessage.toLowerCase().trim();
 
-    const recentQuestionIds = recentQuestions?.map((q) => q.metadata?.mcq_id).filter(Boolean) || [];
+  let hour = null;
+  let timeSlot = '';
 
-    const difficultyChain =
-      targetDifficulty === 'hard'
-        ? ['hard', 'medium', 'easy']
-        : targetDifficulty === 'easy'
-          ? ['easy', 'medium', 'hard']
-          : ['medium', 'easy', 'hard'];
+  if (message.includes('morning') || message.includes('8')) {
+    hour = 8;
+    timeSlot = 'Morning';
+  } else if (message.includes('afternoon') || message.includes('2')) {
+    hour = 14;
+    timeSlot = 'Afternoon';
+  } else if (message.includes('evening') || message.includes('6')) {
+    hour = 18;
+    timeSlot = 'Evening';
+  }
 
-    for (const difficulty of difficultyChain) {
-      let query = supabase
-        .from('mcqs')
-        .select('*')
-        .eq('subject_id', subjectId)
-        .eq('difficulty', difficulty)
-        .order('last_served_at', { ascending: true, nullsFirst: true })
-        .limit(1);
+  if (hour) {
+    // Valid time selected
+    await supabase
+      .from('users')
+      .update({
+        preferred_send_hour: hour,
+        consented_daily: true,
+        current_state: 'idle',
+        updated_at: new Date().toISOString(),
+        last_active_at: new Date().toISOString()
+      })
+      .eq('id', user.id);
 
-      if (recentQuestionIds.length > 0) {
-        query = query.not('id', 'in', `(${recentQuestionIds.join(',')})`);
-      }
-
-      const { data: questions, error } = await query;
-
-      if (error) throw error;
-
-      if (questions && questions.length > 0) {
-        return questions[0];
-      }
-    }
-
-    // Ultimate fallback: any question from this subject
-    const { data: fallbackQuestions } = await supabase
-      .from('mcqs')
-      .select('*')
-      .eq('subject_id', subjectId)
-      .order('last_served_at', { ascending: true, nullsFirst: true })
-      .limit(1);
-
-    return fallbackQuestions?.[0] || null;
-  } catch (error) {
-    console.error('Error selecting adaptive question:', error);
-    return null;
+    const response = `Perfect! 🎯 You're all set for ${timeSlot} practice sessions!\n\n🐐 Send START anytime for instant practice\n⚡ Daily sessions at ${timeSlot}\n🔥 Let's build that streak!\n\nReady to start? Send START! 💪`;
+    await sendManyChatReply(psid, response);
+  } else {
+    // Invalid time
+    const response = `Hmm, not sure about that time! 🤔\n\nWhen should I send your daily practice?\n\n🌅 Morning (8AM)\n🌞 Afternoon (2PM) \n🌆 Evening (6PM)\n\nJust say Morning, Afternoon, or Evening! ⏰`;
+    await sendManyChatReply(psid, response);
   }
 }
 
-// FIX #2: Format question with correct schema (choices as JSONB)
-function formatQuestionForWhatsApp(question) {
-  try {
-    let formattedQuestion = `**${question.question_text || question.question}**\n\n`;
+// Handle idle state (main interaction state)
+async function handleIdleState(user, userMessage, psid, supabase) {
+  const message = userMessage.toLowerCase().trim();
 
-    // Handle both old schema (option_a, option_b, etc.) and new schema (choices jsonb)
-    if (question.choices && typeof question.choices === 'object') {
-      // New schema: choices is JSONB
-      const choiceKeys = ['A', 'B', 'C', 'D'];
-      for (const key of choiceKeys) {
-        if (question.choices[key]) {
-          formattedQuestion += `${key}) ${question.choices[key]}\n`;
-        }
-      }
+  if (message === 'start' || message === 'begin' || message === 'practice') {
+    // Start practice session
+    await updateUserState(user.id, 'hook_sent', supabase);
+    const response = `Yebo! 🔥 Let's get that brain working!\n\nMath fact: Students who practice 10 minutes daily improve 3x faster! 📈\n\nReady for your first question? Send READY! 🎯`;
+    await sendManyChatReply(psid, response);
+  } else if (message === 'help' || message === 'info') {
+    // Help message
+    const response = `Hey champion! 🐐 Here's what I can do:\n\n📚 Send START for practice\n⚡ Get daily sessions\n🔥 Build your streak\n📈 Track progress\n\nSend START to begin! 💪`;
+    await sendManyChatReply(psid, response);
+  } else {
+    // Default response
+    const response = `Howzit! 🐐 Ready for some math practice?\n\nSend START to begin your session! 💪\n\n(Or send HELP for more options)`;
+    await sendManyChatReply(psid, response);
+  }
+}
+
+// Handle hook sent state
+async function handleHookSent(user, userMessage, psid, supabase) {
+  const message = userMessage.toLowerCase().trim();
+
+  if (message === 'ready' || message === 'yes' || message === 'go') {
+    // User is ready for question
+    await updateUserState(user.id, 'question_sent', supabase);
+
+    // For now, send a simple placeholder question
+    // TODO: Fetch actual question from database
+    const response = `🧮 QUESTION 1:\n\nSolve for x:\n2x + 5 = 13\n\nA) x = 3\nB) x = 4  \nC) x = 5\nD) x = 6\n\nSend A, B, C, or D! ⏰`;
+    await sendManyChatReply(psid, response);
+  } else {
+    // Motivate user
+    const response = `No pressure! 😊 Take your time...\n\nWhen you're ready to tackle this question, just send READY! 🎯\n\n(Remember: Every expert was once a beginner! 🐐)`;
+    await sendManyChatReply(psid, response);
+  }
+}
+
+// Handle question sent state
+async function handleQuestionSent(user, userMessage, psid, supabase) {
+  const answer = userMessage.toUpperCase().trim();
+
+  if (['A', 'B', 'C', 'D'].includes(answer)) {
+    // Valid answer format
+    const correctAnswer = 'B'; // Placeholder - should come from database
+
+    if (answer === correctAnswer) {
+      // Correct answer
+      await updateUserState(user.id, 'idle', supabase);
+      const response = `🎉 BOOM! Correct! 💯\n\nx = 4 is right! 🔥\n\n2(4) + 5 = 8 + 5 = 13 ✅\n\nYou're on fire! 🐐 Send START for another question! 💪`;
+      await sendManyChatReply(psid, response);
     } else {
-      // Old schema fallback: individual columns
-      if (question.option_a) formattedQuestion += `A) ${question.option_a}\n`;
-      if (question.option_b) formattedQuestion += `B) ${question.option_b}\n`;
-      if (question.option_c) formattedQuestion += `C) ${question.option_c}\n`;
-      if (question.option_d) formattedQuestion += `D) ${question.option_d}\n`;
-    }
-
-    formattedQuestion += `\nReply with A, B, C, or D 🎯`;
-    return formattedQuestion;
-  } catch (error) {
-    console.error('Error formatting question:', error);
-    return `Error loading question. Please try again 🔄`;
-  }
-}
-
-// ============================================================================
-// CORE ANSWER PROCESSING (FIX #3: Consolidated function to eliminate duplication)
-// ============================================================================
-
-async function processUserAnswer(user, input, psid, nextState = USER_STATES.ANSWERED_QUESTION) {
-  try {
-    // Get the current question
-    const { data: question } = await supabase
-      .from('mcqs')
-      .select('*')
-      .eq('id', user.current_question_id)
-      .single();
-
-    if (!question) {
-      await sendManyChatReply(psid, "Eish! Something went wrong. Let's try again 🔄");
-      await updateUserState(user.id, USER_STATES.IDLE);
-      return;
-    }
-
-    const correct = input === question.correct_answer || input === question.correct_choice;
-
-    // Get current session data
-    const currentSession = await getCurrentDailySession(user.id);
-    const sessionCount = (currentSession.questions_answered || 0) + 1;
-    const sessionCorrect = (currentSession.questions_correct || 0) + (correct ? 1 : 0);
-
-    // Update user stats
-    const newTotalQuestions = (user.total_questions_answered || 0) + 1;
-    const newCorrectQuestions = (user.total_correct_answers || 0) + (correct ? 1 : 0);
-    const newCorrectRate = newCorrectQuestions / newTotalQuestions;
-    const newStreak = correct ? (user.streak_count || 0) + 1 : 0;
-
-    // Update user state
-    await updateUserState(user.id, nextState, {
-      session_question_count: sessionCount,
-      total_questions_answered: newTotalQuestions,
-      total_correct_answers: newCorrectQuestions,
-      correct_answer_rate: newCorrectRate,
-      streak_count: newStreak,
-      current_question_id: null
-    });
-
-    // Update session stats
-    await supabase
-      .from('daily_sessions')
-      .update({
-        questions_answered: sessionCount,
-        questions_correct: sessionCorrect
-      })
-      .eq('user_id', user.id)
-      .eq('session_date', new Date().toISOString().split('T')[0]);
-
-    // Log weakness if incorrect
-    if (!correct) {
-      await supabase.from('user_weaknesses').insert({
-        user_id: user.id,
-        subject_id: user.current_subject_id,
-        topic_id: question.topic_id,
-        mcq_id: question.id,
-        weakness_tag: question.topic || 'general'
-      });
-    }
-
-    // Prepare feedback response
-    let feedback = '';
-    if (correct) {
-      feedback = `${getRandomResponse(PERSONA_RESPONSES.CORRECT_RESPONSES)}`;
-    } else {
-      feedback = `${getRandomResponse(PERSONA_RESPONSES.INCORRECT_RESPONSES)} The correct answer was ${question.correct_answer || question.correct_choice}.`;
-    }
-
-    // Add explanation if available
-    if (question.explanation) {
-      feedback += `\n\n${question.explanation}`;
-    }
-
-    // Add MORE CTA for ANSWERED_QUESTION state
-    if (nextState === USER_STATES.ANSWERED_QUESTION) {
-      const moreCTA = getRandomResponse(PERSONA_RESPONSES.MORE_CTAS);
-      feedback += `\n\n${moreCTA}`;
-    }
-
-    await sendManyChatReply(psid, feedback);
-
-    await logEvent('ANSWER_SUBMITTED', user.id, {
-      mcq_id: question.id,
-      subject_id: user.current_subject_id,
-      topic_id: question.topic_id,
-      answer_given: input,
-      correct_answer: question.correct_answer || question.correct_choice,
-      correct: correct,
-      session_position: sessionCount,
-      new_streak: newStreak,
-      new_accuracy: newCorrectRate
-    });
-  } catch (error) {
-    console.error('Error processing user answer:', error);
-    await sendManyChatReply(
-      psid,
-      'Eish! Something went wrong processing your answer. Try again 🔄'
-    );
-    await updateUserState(user.id, USER_STATES.IDLE);
-  }
-}
-
-// ============================================================================
-// STATE HANDLER FUNCTIONS
-// ============================================================================
-
-async function handleConsentPending(user, message, psid) {
-  const input = normalizeUserInput(message);
-
-  if (input === 'START' || input === 'YES') {
-    await updateUserState(user.id, USER_STATES.SUBJECT_SELECTION);
-
-    const subjects = await getActiveSubjects();
-    const subjectList = subjects.map((s) => `${s.icon_emoji} ${s.display_name}`).join('\n');
-
-    const response = `${getRandomResponse(PERSONA_RESPONSES.WELCOME)}
-
-I can help you practice across multiple subjects:
-
-${subjectList}
-
-Which subjects are you keen to practice? Reply with the subject names (e.g., "Mathematics Physics") or reply ALL for everything 📚`;
-
-    await sendManyChatReply(psid, response);
-    await logEvent('CONSENT_FLOW_STARTED', user.id);
-  } else if (input === 'NO' || input === 'STOP') {
-    const response = "No stress! When you're ready to level up your knowledge, just send START 🤙";
-    await sendManyChatReply(psid, response);
-    await logEvent('CONSENT_DECLINED', user.id);
-  } else {
-    const response = `Howzit! 🐐 I'm The GOAT - your daily practice partner.
-
-Want me to send you one spicy practice question every day? 
-
-Reply YES to get started or NO if you're not keen 👍👎`;
-
-    await sendManyChatReply(psid, response);
-  }
-}
-
-async function handleSubjectSelection(user, message, psid) {
-  const input = normalizeUserInput(message);
-  const subjects = await getActiveSubjects();
-
-  let selectedSubjects = [];
-
-  if (input === 'all') {
-    selectedSubjects = subjects;
-  } else {
-    for (const subject of subjects) {
-      if (
-        message.toLowerCase().includes(subject.name.toLowerCase()) ||
-        message.toLowerCase().includes(subject.display_name.toLowerCase())
-      ) {
-        selectedSubjects.push(subject);
-      }
-    }
-  }
-
-  if (selectedSubjects.length === 0) {
-    const subjectList = subjects.map((s) => `${s.icon_emoji} ${s.display_name}`).join('\n');
-    const response = `Eish, I didn't catch that. Which subjects would you like to practice?
-
-${subjectList}
-
-Reply with subject names or ALL for everything 📚`;
-
-    await sendManyChatReply(psid, response);
-    return;
-  }
-
-  // Save user subject preferences
-  for (let i = 0; i < selectedSubjects.length; i++) {
-    const subject = selectedSubjects[i];
-    await supabase.from('user_subject_preferences').insert({
-      user_id: user.id,
-      subject_id: subject.id,
-      is_enabled: true,
-      priority_order: i
-    });
-  }
-
-  await updateUserState(user.id, USER_STATES.TIME_PREFERENCE);
-
-  const selectedNames = selectedSubjects.map((s) => s.display_name).join(', ');
-  const response = `Sharp! You selected: ${selectedNames} 🔥
-
-What time should I send your daily practice? Reply with an hour (e.g., 16 for 4PM, 9 for 9AM) ⏰`;
-
-  await sendManyChatReply(psid, response);
-  await logEvent('SUBJECTS_SELECTED', user.id, {
-    subject_ids: selectedSubjects.map((s) => s.id),
-    subject_names: selectedNames
-  });
-}
-
-async function handleTimePreference(user, message, psid) {
-  const input = normalizeUserInput(message);
-
-  if (input === 'TIME') {
-    const hour = parseInt(message.trim());
-
-    await updateUserState(user.id, USER_STATES.IDLE, {
-      consented_daily: true,
-      preferred_send_hour: hour,
-      daily_session_complete: false
-    });
-
-    const response = `Lekker! I'll send your daily practice at ${hour}:00. 
-
-Let's get you started with your first question right now! 🚀`;
-
-    await sendManyChatReply(psid, response);
-
-    // Send first hook immediately
-    await handleIdleState(user, 'START', psid, true);
-
-    await logEvent('ONBOARDING_COMPLETED', user.id, {
-      preferred_hour: hour,
-      immediate_start: true
-    });
-  } else {
-    const response = `Please reply with just the hour number (0-23).
-
-For example:
-• 9 for 9 AM
-• 16 for 4 PM  
-• 20 for 8 PM
-
-What time works for you? ⏰`;
-
-    await sendManyChatReply(psid, response);
-  }
-}
-
-async function handleIdleState(user, message, psid, forceStart = false) {
-  const input = normalizeUserInput(message);
-
-  if (input === 'START' || forceStart) {
-    const subject = await selectAdaptiveSubject(user.id);
-
-    if (!subject) {
-      const response = 'Eish! No subjects available right now. Contact support 📞';
+      // Wrong answer
+      await updateUserState(user.id, 'idle', supabase);
+      const response = `Eish, not quite! 😅 The answer was B) x = 4\n\nHere's how:\n2x + 5 = 13\n2x = 13 - 5\n2x = 8\nx = 4 ✅\n\nNo worries! Send START to try another! 🎯`;
       await sendManyChatReply(psid, response);
-      return;
     }
-
-    const hook = await selectAdaptiveHook(user.id, subject.id);
-
-    if (!hook) {
-      const response = 'No fresh content available. Adding more soon! 🔄';
-      await sendManyChatReply(psid, response);
-      return;
-    }
-
-    await updateUserState(user.id, USER_STATES.HOOK_SENT, {
-      hook_sent_at: new Date().toISOString(),
-      current_subject_id: subject.id,
-      last_hook_subject_id: subject.id,
-      last_hook_topic: hook.topic || hook.text.substring(0, 50),
-      session_question_count: 0
-    });
-
-    // Update hook usage
-    await supabase
-      .from('hooks')
-      .update({
-        usage_count: (hook.usage_count || 0) + 1,
-        last_served_at: new Date().toISOString()
-      })
-      .eq('id', hook.id);
-
-    const response = `${hook.text}
-
-${getRandomResponse(PERSONA_RESPONSES.HOOK_CTAS)}`;
-
-    await sendManyChatReply(psid, response);
-
-    await logEvent('HOOK_SENT', user.id, {
-      hook_id: hook.id,
-      subject_id: subject.id,
-      topic_id: hook.topic_id,
-      subject_name: subject.name,
-      topic_name: hook.topic
-    });
-  } else if (input === 'STOP') {
-    await updateUserState(user.id, USER_STATES.CONSENT_PENDING, {
-      consented_daily: false
-    });
-
-    const response = "No worries! When you're ready to continue, just send START 🤙";
-    await sendManyChatReply(psid, response);
-    await logEvent('USER_OPTED_OUT', user.id);
   } else {
-    const response = 'Howzit! 🐐 Send START for your daily practice session or STOP to pause 👍';
+    // Invalid answer format
+    const response = `Please send A, B, C, or D for your answer! 🎯\n\nThe question is:\n2x + 5 = 13\n\nA) x = 3\nB) x = 4\nC) x = 5  \nD) x = 6`;
     await sendManyChatReply(psid, response);
   }
 }
 
-async function handleHookSent(user, message, psid) {
-  const input = normalizeUserInput(message);
-
-  if (input === 'YES') {
-    // Update session that hook was accepted
-    await supabase
-      .from('daily_sessions')
-      .update({ hook_accepted: true })
-      .eq('user_id', user.id)
-      .eq('session_date', new Date().toISOString().split('T')[0]);
-
-    await logEvent('HOOK_ACCEPTED', user.id);
-
-    // Calculate difficulty based on user's performance
-    let targetDifficulty = 'medium';
-    if (user.correct_answer_rate >= 0.75) {
-      targetDifficulty = 'hard';
-    } else if (user.correct_answer_rate < 0.55) {
-      targetDifficulty = 'easy';
-    }
-
-    const question = await selectAdaptiveQuestion(
-      user.id,
-      user.current_subject_id,
-      targetDifficulty
-    );
-
-    if (!question) {
-      const response = 'Eish! No questions available for this topic right now. Try again later 🔄';
-      await sendManyChatReply(psid, response);
-      await updateUserState(user.id, USER_STATES.IDLE);
-      return;
-    }
-
-    await updateUserState(user.id, USER_STATES.QUESTION_SENT, {
-      current_question_id: question.id,
-      question_sent_at: new Date().toISOString()
-    });
-
-    // Update question usage
-    await supabase
-      .from('mcqs')
-      .update({ last_served_at: new Date().toISOString() })
-      .eq('id', question.id);
-
-    const response = formatQuestionForWhatsApp(question);
-    await sendManyChatReply(psid, response);
-
-    await logEvent('QUESTION_SERVED', user.id, {
-      mcq_id: question.id,
-      subject_id: user.current_subject_id,
-      topic_id: question.topic_id,
-      difficulty: question.difficulty,
-      target_difficulty: targetDifficulty
-    });
-  } else if (input === 'NO') {
-    // User declined hook
-    await supabase
-      .from('daily_sessions')
-      .update({ hook_accepted: false })
-      .eq('user_id', user.id)
-      .eq('session_date', new Date().toISOString().split('T')[0]);
-
-    await updateUserState(user.id, USER_STATES.DECLINED_DAILY, {
-      daily_session_complete: true
-    });
-
-    const response = getRandomResponse(PERSONA_RESPONSES.DECLINE_RESPONSES);
-    await sendManyChatReply(psid, response);
-
-    await logEvent('HOOK_DECLINED', user.id);
-  } else {
-    const response = "Reply YES if you're keen for the challenge, or NO to skip today 👍👎";
-    await sendManyChatReply(psid, response);
-  }
-}
-
-// FIX #3: Simplified handleQuestionSent using consolidated function
-async function handleQuestionSent(user, message, psid) {
-  const input = normalizeUserInput(message);
-
-  if (['A', 'B', 'C', 'D'].includes(input)) {
-    await processUserAnswer(user, input, psid, USER_STATES.ANSWERED_QUESTION);
-  } else {
-    await sendManyChatReply(psid, 'Please reply with A, B, C, or D for your answer 🎯');
-  }
-}
-
-async function handleAnsweredQuestion(user, message, psid) {
-  const input = normalizeUserInput(message);
-
-  if (input === 'MORE') {
-    await logEvent('SESSION_EXTENDED', user.id, {
-      questions_so_far: user.session_question_count
-    });
-
-    // Calculate target difficulty
-    let targetDifficulty = 'medium';
-    if (user.correct_answer_rate >= 0.75) {
-      targetDifficulty = 'hard';
-    } else if (user.correct_answer_rate < 0.55) {
-      targetDifficulty = 'easy';
-    }
-
-    // Use let so we can reassign if needed
-    let question = await selectAdaptiveQuestion(user.id, user.current_subject_id, targetDifficulty);
-
-    if (!question) {
-      // Try other subjects
-      const userPrefs = await getUserSubjectPreferences(user.id);
-      let foundQuestion = null;
-      let newSubjectId = null;
-
-      for (const pref of userPrefs) {
-        if (pref.subject_id !== user.current_subject_id) {
-          foundQuestion = await selectAdaptiveQuestion(user.id, pref.subject_id, targetDifficulty);
-          if (foundQuestion) {
-            newSubjectId = pref.subject_id;
-            break;
-          }
-        }
-      }
-
-      if (!foundQuestion) {
-        const response = "Legend! You've crushed all available questions. Tomorrow we go again! 🚀";
-        await sendManyChatReply(psid, response);
-        await updateUserState(user.id, USER_STATES.SESSION_COMPLETE, {
-          daily_session_complete: true
-        });
-        return;
-      }
-
-      question = foundQuestion;
-
-      if (newSubjectId) {
-        await updateUserState(user.id, USER_STATES.ADDITIONAL_QUESTION_SENT, {
-          current_subject_id: newSubjectId
-        });
-      }
-    }
-
-    await updateUserState(user.id, USER_STATES.ADDITIONAL_QUESTION_SENT, {
-      current_question_id: question.id,
-      question_sent_at: new Date().toISOString()
-    });
-
-    await supabase
-      .from('mcqs')
-      .update({ last_served_at: new Date().toISOString() })
-      .eq('id', question.id);
-
-    const response = `Lekker! Here's the next one:\n\n${formatQuestionForWhatsApp(question)}`;
-    await sendManyChatReply(psid, response);
-
-    await logEvent('QUESTION_SERVED', user.id, {
-      mcq_id: question.id,
-      subject_id: user.current_subject_id,
-      topic_id: question.topic_id,
-      difficulty: question.difficulty,
-      session_position: (user.session_question_count || 0) + 1
-    });
-  } else if (input === 'STOP') {
-    await updateUserState(user.id, USER_STATES.SESSION_COMPLETE, {
-      daily_session_complete: true
-    });
-
-    // Update session completion
-    await supabase
-      .from('daily_sessions')
-      .update({
-        completed_at: new Date().toISOString(),
-        session_duration_minutes: user.hook_sent_at
-          ? Math.round((Date.now() - new Date(user.hook_sent_at).getTime()) / 60000)
-          : null
-      })
-      .eq('user_id', user.id)
-      .eq('session_date', new Date().toISOString().split('T')[0]);
-
-    const response = getRandomResponse(PERSONA_RESPONSES.COMPLETION);
-    await sendManyChatReply(psid, response);
-
-    await logEvent('SESSION_COMPLETED', user.id, {
-      total_questions: user.session_question_count || 0,
-      session_duration_minutes: user.hook_sent_at
-        ? Math.round((Date.now() - new Date(user.hook_sent_at).getTime()) / 60000)
-        : null
-    });
-  } else {
-    const response = 'Reply MORE for another question or STOP to finish 🎯🛑';
-    await sendManyChatReply(psid, response);
-  }
-}
-
-// FIX #3: Simplified handleAdditionalQuestionSent using consolidated function
-async function handleAdditionalQuestionSent(user, message, psid) {
-  const input = normalizeUserInput(message);
-
-  if (['A', 'B', 'C', 'D'].includes(input)) {
-    await processUserAnswer(user, input, psid, USER_STATES.ANSWERED_QUESTION);
-  } else {
-    await sendManyChatReply(psid, 'Please reply with A, B, C, or D for your answer 🎯');
-  }
-}
-
-// ============================================================================
-// MAIN WEBHOOK HANDLER (FIX #1: Updated to handle 'message' field)
-// ============================================================================
-
+// Main webhook handler
 export default async function handler(req, res) {
+  console.log(`🚀 Webhook called at ${new Date().toISOString()}`);
+  console.log(`📥 Method: ${req.method}`);
+  console.log(`📝 Body:`, JSON.stringify(req.body, null, 2));
+
+  // Validate environment first
+  if (!validateEnvironment()) {
+    console.error(`❌ Environment validation failed`);
+    return res.status(200).json({ status: 'success', note: 'Configuration issue' });
+  }
+
   if (req.method !== 'POST') {
+    console.log(`❌ Method not allowed: ${req.method}`);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // FIX #1: Support both 'text' and 'message' field names
-    const { psid, text, message } = req.body;
-    const userMessage = text || message;
+    // Support multiple field name variations from ManyChat
+    const { psid, text, message, last_input_text } = req.body;
+    const userMessage = text || message || last_input_text;
+
+    console.log(`📊 Extracted: PSID=${psid}, Message="${userMessage}"`);
 
     if (!psid || !userMessage) {
+      console.log(`❌ Missing fields: psid=${psid}, message=${userMessage}`);
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const user = await findOrCreateUser(psid);
+    // Initialize Supabase client
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+
+    // Find or create user
+    const user = await findOrCreateUser(psid, supabase);
     if (!user) {
-      await sendManyChatReply(
-        psid,
-        "Eish, I'm battling to load your profile. Try again in a bit 🔄"
-      );
-      return res.status(200).json({ status: 'success' });
+      console.log(`❌ Failed to find/create user for PSID: ${psid}`);
+      return res.status(200).json({ status: 'success', note: 'User creation failed' });
     }
+
+    console.log(`✅ User loaded: ${user.id}, State: ${user.current_state}`);
 
     // Route based on current state
     switch (user.current_state) {
-      case USER_STATES.CONSENT_PENDING:
-        await handleConsentPending(user, userMessage, psid);
+      case 'consent_pending':
+        await handleConsentPending(user, userMessage, psid, supabase);
         break;
 
-      case USER_STATES.SUBJECT_SELECTION:
-        await handleSubjectSelection(user, userMessage, psid);
+      case 'subject_selection':
+        await handleSubjectSelection(user, userMessage, psid, supabase);
         break;
 
-      case USER_STATES.TIME_PREFERENCE:
-        await handleTimePreference(user, userMessage, psid);
+      case 'time_preference':
+        await handleTimePreference(user, userMessage, psid, supabase);
         break;
 
-      case USER_STATES.IDLE:
-      case USER_STATES.DECLINED_DAILY:
-      case USER_STATES.SESSION_COMPLETE:
-        await handleIdleState(user, userMessage, psid);
+      case 'idle':
+      case 'declined_daily':
+      case 'session_complete':
+        await handleIdleState(user, userMessage, psid, supabase);
         break;
 
-      case USER_STATES.HOOK_SENT:
-        await handleHookSent(user, userMessage, psid);
+      case 'hook_sent':
+        await handleHookSent(user, userMessage, psid, supabase);
         break;
 
-      case USER_STATES.QUESTION_SENT:
-        await handleQuestionSent(user, userMessage, psid);
+      case 'question_sent':
+        await handleQuestionSent(user, userMessage, psid, supabase);
         break;
 
-      case USER_STATES.ANSWERED_QUESTION:
-        await handleAnsweredQuestion(user, userMessage, psid);
+      case 'answered_question':
+        await handleIdleState(user, userMessage, psid, supabase);
         break;
 
-      case USER_STATES.ADDITIONAL_QUESTION_SENT:
-        await handleAdditionalQuestionSent(user, userMessage, psid);
+      case 'additional_question_sent':
+        await handleQuestionSent(user, userMessage, psid, supabase);
         break;
 
       default:
-        await updateUserState(user.id, USER_STATES.IDLE);
+        console.log(`⚠️ Unknown state: ${user.current_state}, resetting to idle`);
+        await updateUserState(user.id, 'idle', supabase);
         const response = 'Howzit! 🐐 Send START for your daily practice session 👍';
         await sendManyChatReply(psid, response);
         break;
     }
 
+    console.log(`✅ Webhook completed successfully`);
     return res.status(200).json({ status: 'success' });
   } catch (error) {
-    console.error('Webhook error:', error);
+    console.error('❌ Webhook error:', error);
 
-    // Best effort user notification
+    // Best effort user notification (only if we have psid)
     try {
       if (req.body?.psid) {
         await sendManyChatReply(
@@ -1066,7 +505,7 @@ export default async function handler(req, res) {
         );
       }
     } catch (notificationError) {
-      console.error('Failed to send error notification:', notificationError);
+      console.error('❌ Failed to send error notification:', notificationError);
     }
 
     // Always return 200 to prevent ManyChat retries
