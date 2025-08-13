@@ -3,7 +3,7 @@
  * Architecture: ManyChat (External Request) -> This API Route -> Supabase
  *
  * WA (WhatsApp) ManyChat API base: https://api.manychat.com
- * Correct send endpoint (v2 content): POST https://api.manychat.com/wa/subscriber/sendContent
+ * Correct send endpoint: POST https://api.manychat.com/wa/sending/sendContent
  *
  * Expected inbound JSON body from ManyChat External Request block:
  * {
@@ -87,7 +87,7 @@ function capitalize(s = '') {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// FIXED: Using correct WhatsApp subscriber endpoint and no message tags
+// FIXED: Using correct ManyChat WhatsApp API v1 endpoint
 async function sendManyChatReply(psid, message) {
   try {
     console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
@@ -98,26 +98,17 @@ async function sendManyChatReply(psid, message) {
       return false;
     }
 
-    // FIXED: Correct WhatsApp subscriber endpoint (not sending endpoint)
-    const url = 'https://api.manychat.com/wa/subscriber/sendContent';
+    // FIXED: Using ManyChat WhatsApp API v1 endpoint (simpler structure)
+    const url = 'https://api.manychat.com/wa/messages';
 
-    // Simple payload without message tags (for recent conversations)
+    // Simplified v1 payload structure
     const payload = {
       subscriber_id: psid,
-      data: {
-        version: 'v2',
-        content: {
-          messages: [
-            {
-              type: 'text',
-              text: message
-            }
-          ]
-        }
-      }
+      type: 'text',
+      text: message
     };
 
-    console.log(`🔄 Attempting WA subscriber send:`, JSON.stringify(payload, null, 2));
+    console.log(`🔄 Attempting WA v1 send:`, JSON.stringify(payload, null, 2));
 
     const response = await fetch(url, {
       method: 'POST',
@@ -138,9 +129,63 @@ async function sendManyChatReply(psid, message) {
 
     const errorText = await response.text();
     console.error(`❌ ManyChat API failed with status ${response.status}: ${errorText}`);
+
+    // If v1 fails, try the v2 endpoint one more time
+    if (response.status === 404) {
+      console.log('🔄 Trying v2 endpoint as fallback...');
+      return await sendManyChatReplyV2(psid, message);
+    }
+
     return false;
   } catch (error) {
     console.error('❌ Exception in sendManyChatReply:', error);
+    return false;
+  }
+}
+
+// Fallback v2 endpoint attempt
+async function sendManyChatReplyV2(psid, message) {
+  try {
+    const token = process.env.MANYCHAT_API_TOKEN;
+    const url = 'https://api.manychat.com/wa/sending/sendContent';
+
+    const payload = {
+      subscriber_id: psid,
+      data: {
+        version: 'v2',
+        content: {
+          messages: [
+            {
+              type: 'text',
+              text: message
+            }
+          ]
+        }
+      }
+    };
+
+    console.log(`🔄 Fallback v2 attempt:`, JSON.stringify(payload, null, 2));
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      const responseData = await response.json();
+      console.log(`✅ V2 fallback successful:`, responseData);
+      return true;
+    }
+
+    const errorText = await response.text();
+    console.error(`❌ V2 fallback also failed: ${errorText}`);
+    return false;
+  } catch (error) {
+    console.error(`❌ Exception in v2 fallback:`, error);
     return false;
   }
 }
@@ -254,11 +299,11 @@ export default async function handler(req, res) {
           );
           const weaknessTag = chosen?.weakness_tag || 'that concept';
 
-          // FIXED: Log weakness with mcq_id column
+          // Log weakness with mcq_id column
           if (weaknessTag) {
             const { error: weakErr } = await supabase.from('user_weaknesses').insert({
               user_id: user.id,
-              mcq_id: question.id, // FIXED: Added required mcq_id
+              mcq_id: question.id,
               weakness_tag: weaknessTag
             });
             if (weakErr) {
