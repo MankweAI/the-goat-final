@@ -1,14 +1,14 @@
 ﻿/**
- * The GOAT - ManyChat Webhook (WhatsApp channel)
+ * The GOAT - ManyChat Webhook (Facebook Messenger channel)
  * Architecture: ManyChat (External Request) -> This API Route -> Supabase
  *
- * WA (WhatsApp) ManyChat API base: https://api.manychat.com
- * Correct send endpoint (v2 content): POST https://api.manychat.com/wa/sending/sendContent
+ * FB (Facebook Messenger) ManyChat API base: https://api.manychat.com
+ * Correct send endpoint (v2 content): POST https://api.manychat.com/fb/sending/sendContent
  *
  * Expected inbound JSON body from ManyChat External Request block:
  * {
- *   "subscriber_id": "{{user.id}}",       // ManyChat internal numeric user id (WhatsApp)
- *   "message": "{{last_input}}"           // User’s raw message text
+ *   "subscriber_id": "{{user.id}}",       // ManyChat internal user id (Facebook)
+ *   "message": "{{last_input}}"           // User's raw message text
  * }
  *
  * For backward compatibility we also accept { psid, message }.
@@ -87,28 +87,30 @@ function capitalize(s = '') {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// FIXED: Removed the message_tag completely, as it's unsupported by this specific endpoint.
+// FIXED: Using Facebook Messenger endpoint with proper message tag handling
 async function sendManyChatReply(psid, message) {
   try {
     console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
     console.log(`📝 Message: ${message}`);
     const token = process.env.MANYCHAT_API_TOKEN;
     if (!token) {
-        console.error('❌ FATAL: MANYCHAT_API_TOKEN is not set!');
-        return false;
+      console.error('❌ FATAL: MANYCHAT_API_TOKEN is not set!');
+      return false;
     }
 
+    // Correct Facebook Messenger endpoint
     const url = 'https://api.manychat.com/fb/sending/sendContent';
-    
-    // This is the corrected payload with the message_tag removed.
+
+    // Facebook Messenger payload with message tag for 24h+ window
     const payload = {
       subscriber_id: psid,
+      message_tag: 'NON_PROMOTIONAL_SUBSCRIPTION',
       data: {
-        version: "v2",
+        version: 'v2',
         content: {
           messages: [
             {
-              type: "text",
+              type: 'text',
               text: message
             }
           ]
@@ -116,13 +118,16 @@ async function sendManyChatReply(psid, message) {
       }
     };
 
-    console.log(`🔄 Attempting to send with payload (no tag):`, JSON.stringify(payload, null, 2));
-    
+    console.log(
+      `🔄 Attempting FB send with NON_PROMOTIONAL_SUBSCRIPTION tag:`,
+      JSON.stringify(payload, null, 2)
+    );
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
     });
@@ -133,18 +138,73 @@ async function sendManyChatReply(psid, message) {
       const responseData = await response.json();
       console.log(`✅ Message sent successfully:`, responseData);
       return true;
-    } 
-    
+    }
+
     const errorText = await response.text();
     console.error(`❌ ManyChat API failed with status ${response.status}: ${errorText}`);
-    return false;
 
+    // If NON_PROMOTIONAL_SUBSCRIPTION fails, try without tag for recent conversations
+    if (response.status === 400 && errorText.includes('message tag')) {
+      console.log('🔄 Trying without message tag (recent conversation)');
+      return await sendManyChatReplyWithoutTag(psid, message);
+    }
+
+    return false;
   } catch (error) {
     console.error('❌ Exception in sendManyChatReply:', error);
     return false;
   }
 }
 
+// Fallback function for recent conversations (within 24h)
+async function sendManyChatReplyWithoutTag(psid, message) {
+  try {
+    const token = process.env.MANYCHAT_API_TOKEN;
+    const url = 'https://api.manychat.com/fb/sending/sendContent';
+
+    const payload = {
+      subscriber_id: psid,
+      data: {
+        version: 'v2',
+        content: {
+          messages: [
+            {
+              type: 'text',
+              text: message
+            }
+          ]
+        }
+      }
+    };
+
+    console.log(
+      `🔄 Attempting FB send without tag (recent conversation):`,
+      JSON.stringify(payload, null, 2)
+    );
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      const responseData = await response.json();
+      console.log(`✅ Message sent successfully without tag:`, responseData);
+      return true;
+    }
+
+    const errorText = await response.text();
+    console.error(`❌ Fallback without tag also failed: ${errorText}`);
+    return false;
+  } catch (error) {
+    console.error(`❌ Exception in fallback without tag:`, error);
+    return false;
+  }
+}
 
 // ---------- User & Question Logic ----------
 async function findOrCreateUser(supabase, subscriberId) {
@@ -200,18 +260,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed', allowed: ['POST'] });
   }
 
-  // Accept both subscriber_id (WhatsApp) and psid (legacy)
+  // Accept both subscriber_id (Facebook) and psid (legacy)
   const subscriberId = req.body.subscriber_id || req.body.psid;
   const message = req.body.message;
 
   if (!subscriberId || !message) {
     // Spec says 400 if missing
     return res.status(400).json({ error: 'Missing subscriber_id/psid or message' });
-  }
-
-  // ManyChat WA subscriber_id should be numeric, but we won't hard-fail if not:
-  if (!/^\d+$/.test(String(subscriberId))) {
-    console.warn('Non-numeric subscriberId (WA expected numeric):', subscriberId);
   }
 
   let reply = '';
@@ -295,7 +350,7 @@ export default async function handler(req, res) {
         console.error('Fetch next question error:', fetchErr.message);
         reply = `Eish, struggling to fetch a question right now. Try again in a bit. 🔄`;
       } else if (!question) {
-        reply = `You've smashed all the ${diff} questions I’ve got right now. Pull through later for fresh heat. 🔥`;
+        reply = `You've smashed all the ${diff} questions I've got right now. Pull through later for fresh heat. 🔥`;
       } else {
         reply = formatQuestion(question);
 
