@@ -1,514 +1,474 @@
-﻿// The GOAT - ManyChat Webhook Handler
-// Author: mankwemokgabudi
-// Date: 2025-08-13 11:39:00 UTC
-// Purpose: Handle WhatsApp messages via ManyChat integration
+﻿import { createClient } from '@supabase/supabase-js';
 
-const { createClient } = require('@supabase/supabase-js');
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-// Environment validation
-function validateEnvironment() {
-  const required = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'MANYCHAT_API_TOKEN'];
-  const missing = required.filter((key) => !process.env[key]);
+// Helper function to send messages to ManyChat
+async function sendManyChatReply(psid, text) {
+  const token = process.env.MANYCHAT_API_TOKEN;
 
-  if (missing.length > 0) {
-    console.error(`❌ Missing environment variables: ${missing.join(', ')}`);
-    return false;
+  if (!token) {
+    console.error('❌ MANYCHAT_API_TOKEN not found in environment variables');
+    throw new Error('ManyChat API token not configured');
   }
 
-  console.log(`✅ All required environment variables present`);
-  return true;
-}
+  console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
+  console.log(`📝 Message: ${text}`);
+  console.log(`🔑 API Token exists: ${!!token}`);
+  console.log(`🔑 Token preview: ${token.substring(0, 10)}...`);
 
-// Enhanced ManyChat API function with multiple endpoint fallbacks
-async function sendManyChatReply(psid, message) {
-  try {
-    console.log(`🔄 Sending to ManyChat PSID: ${psid}`);
-    console.log(`📝 Message: ${message}`);
-    console.log(`🔑 API Token exists: ${!!process.env.MANYCHAT_API_TOKEN}`);
-    console.log(`🔑 Token preview: ${process.env.MANYCHAT_API_TOKEN?.substring(0, 10)}...`);
-
-    // Method 1: Try the primary ManyChat endpoint
-    console.log(`🔄 Attempting primary endpoint...`);
-
-    const payload1 = {
-      subscriber_id: psid,
-      data: {
-        version: 'v2',
-        content: {
-          messages: [
-            {
-              type: 'text',
-              text: message
-            }
-          ]
-        }
+  const payload = {
+    subscriber_id: psid,
+    data: {
+      version: 'v2',
+      content: {
+        messages: [
+          {
+            type: 'text',
+            text: text
+          }
+        ]
       }
-    };
+    }
+  };
 
-    const response1 = await fetch('https://api.manychat.com/fb/sending/sendContent', {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+
+  // Primary endpoint (current ManyChat API)
+  const primaryUrl = 'https://api.manychat.com/fb/sending/sendContent';
+
+  try {
+    console.log('🔄 Attempting primary endpoint...');
+    const response = await fetch(primaryUrl, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.MANYCHAT_API_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload1)
+      headers,
+      body: JSON.stringify(payload)
     });
 
-    console.log(`📥 Primary endpoint response: ${response1.status}`);
+    console.log(`📥 Primary endpoint response: ${response.status}`);
 
-    if (response1.ok) {
-      const responseData = await response1.json();
-      console.log(`✅ Primary endpoint success:`, responseData);
-      return true;
+    if (response.ok) {
+      const result = await response.text();
+      console.log('✅ Message sent successfully via primary endpoint');
+      return result;
+    } else {
+      const errorText = await response.text();
+      console.log(`❌ Primary endpoint failed: ${response.status} - ${errorText}`);
+      throw new Error(`Primary endpoint failed: ${response.status}`);
     }
-
-    const error1Text = await response1.text();
-    console.log(`❌ Primary endpoint failed: ${response1.status} - ${error1Text}`);
-
-    // Method 2: Try alternative endpoint
-    console.log(`🔄 Attempting alternative endpoint...`);
-
-    const payload2 = {
-      subscriber_id: psid,
-      messages: [
-        {
-          type: 'text',
-          text: message
-        }
-      ]
-    };
-
-    const response2 = await fetch('https://api.manychat.com/fb/subscriber/sendContent', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.MANYCHAT_API_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload2)
-    });
-
-    console.log(`📥 Alternative endpoint response: ${response2.status}`);
-
-    if (response2.ok) {
-      const responseData = await response2.json();
-      console.log(`✅ Alternative endpoint success:`, responseData);
-      return true;
-    }
-
-    const error2Text = await response2.text();
-    console.log(`❌ Alternative endpoint failed: ${response2.status} - ${error2Text}`);
-
-    // Method 3: Try legacy endpoint
-    console.log(`🔄 Attempting legacy endpoint...`);
-
-    const payload3 = {
-      subscriber_id: psid,
-      message_text: message
-    };
-
-    const response3 = await fetch('https://api.manychat.com/fb/sending/sendText', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.MANYCHAT_API_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload3)
-    });
-
-    console.log(`📥 Legacy endpoint response: ${response3.status}`);
-
-    if (response3.ok) {
-      const responseData = await response3.json();
-      console.log(`✅ Legacy endpoint success:`, responseData);
-      return true;
-    }
-
-    const error3Text = await response3.text();
-    console.log(`❌ Legacy endpoint failed: ${response3.status} - ${error3Text}`);
-
-    // Method 4: Try original endpoint with simplified payload
-    console.log(`🔄 Attempting original endpoint with simple payload...`);
-
-    const payload4 = {
-      subscriber_id: psid,
-      text: message
-    };
-
-    const response4 = await fetch('https://api.manychat.com/fb/sender', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.MANYCHAT_API_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload4)
-    });
-
-    console.log(`📥 Original endpoint response: ${response4.status}`);
-
-    if (response4.ok) {
-      const responseData = await response4.json();
-      console.log(`✅ Original endpoint success:`, responseData);
-      return true;
-    }
-
-    const error4Text = await response4.text();
-    console.log(`❌ Original endpoint failed: ${response4.status} - ${error4Text}`);
-
-    // All methods failed
-    console.error(`❌ All ManyChat API attempts failed`);
-    console.error(`Primary: ${response1.status} - ${error1Text}`);
-    console.error(`Alternative: ${response2.status} - ${error2Text}`);
-    console.error(`Legacy: ${response3.status} - ${error3Text}`);
-    console.error(`Original: ${response4.status} - ${error4Text}`);
-
-    return false;
   } catch (error) {
-    console.error('❌ Exception in sendManyChatReply:', error);
-    return false;
+    console.error('❌ Primary endpoint error:', error.message);
+
+    // Fallback to alternative endpoint
+    const altUrl = 'https://api.manychat.com/fb/subscriber/sendContent';
+
+    try {
+      console.log('🔄 Attempting alternative endpoint...');
+      const altResponse = await fetch(altUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      console.log(`📥 Alternative endpoint response: ${altResponse.status}`);
+
+      if (altResponse.ok) {
+        const result = await altResponse.text();
+        console.log('✅ Message sent successfully via alternative endpoint');
+        return result;
+      } else {
+        const errorText = await altResponse.text();
+        console.log(`❌ Alternative endpoint failed: ${altResponse.status} - ${errorText}`);
+        throw new Error(`Alternative endpoint failed: ${altResponse.status}`);
+      }
+    } catch (altError) {
+      console.error('❌ Alternative endpoint error:', altError.message);
+
+      // Final fallback - legacy format
+      const legacyPayload = {
+        subscriber_id: psid,
+        message_text: text
+      };
+
+      const legacyUrl = 'https://api.manychat.com/fb/sending/sendContent';
+
+      try {
+        console.log('🔄 Attempting legacy format...');
+        const legacyResponse = await fetch(legacyUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(legacyPayload)
+        });
+
+        console.log(`📥 Legacy endpoint response: ${legacyResponse.status}`);
+
+        if (legacyResponse.ok) {
+          const result = await legacyResponse.text();
+          console.log('✅ Message sent successfully via legacy format');
+          return result;
+        } else {
+          const errorText = await legacyResponse.text();
+          console.log(`❌ Legacy format failed: ${legacyResponse.status} - ${errorText}`);
+          throw new Error(`All endpoints failed. Last error: ${legacyResponse.status}`);
+        }
+      } catch (legacyError) {
+        console.error('❌ All ManyChat API attempts failed');
+        console.error('Primary:', error.message);
+        console.error('Alternative:', altError.message);
+        console.error('Legacy:', legacyError.message);
+        throw new Error('Failed to send message to ManyChat after all attempts');
+      }
+    }
   }
 }
 
-// Helper function to find or create user
-async function findOrCreateUser(psid, supabase) {
+// Helper function to determine difficulty based on user's performance
+function getDifficultyForUser(correctAnswerRate) {
+  if (correctAnswerRate >= 0.8) return 'hard';
+  if (correctAnswerRate >= 0.5) return 'medium';
+  return 'easy';
+}
+
+// Helper function to update user's correct answer rate
+function updateCorrectAnswerRate(currentRate, isCorrect) {
+  // Weighted average: give more weight to recent performance
+  const weight = 0.2; // 20% weight to new answer, 80% to historical
+  return isCorrect ? currentRate * (1 - weight) + weight : currentRate * (1 - weight);
+}
+
+// Main webhook handler
+export default async function handler(req, res) {
+  const timestamp = new Date().toISOString();
+  console.log(`🚀 Webhook called at ${timestamp}`);
+  console.log(`📥 Method: ${req.method}`);
+  console.log(`📝 Body:`, JSON.stringify(req.body, null, 2));
+
+  // Only accept POST requests
+  if (req.method !== 'POST') {
+    console.log('❌ Non-POST request rejected');
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
   try {
+    // Check environment variables
+    const requiredEnvVars = [
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+      'MANYCHAT_API_TOKEN'
+    ];
+
+    const missingVars = requiredEnvVars.filter((varName) => !process.env[varName]);
+    if (missingVars.length > 0) {
+      console.error('❌ Missing environment variables:', missingVars);
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
+
+    console.log('✅ All required environment variables present');
+
+    // Extract data from request body
+    const { psid, message } = req.body;
+
+    if (!psid || !message) {
+      console.log('❌ Missing required fields: psid or message');
+      return res.status(400).json({ error: 'Missing psid or message' });
+    }
+
+    console.log(`📊 Extracted: PSID=${psid}, Message="${message}"`);
+
+    // Find or create user
     console.log(`🔍 Looking for user with PSID: ${psid}`);
 
-    // Try to find existing user
-    const { data: existingUser, error: findError } = await supabase
+    let { data: user, error: userError } = await supabase
       .from('users')
       .select('*')
       .eq('whatsapp_psid', psid)
       .single();
 
-    if (existingUser) {
-      console.log(`✅ Found existing user: ${existingUser.id}`);
-      return existingUser;
+    if (userError && userError.code !== 'PGRST116') {
+      console.error('❌ Database error fetching user:', userError);
+      throw userError;
     }
 
-    if (findError && findError.code !== 'PGRST116') {
-      console.error('❌ Error finding user:', findError);
-      throw findError;
-    }
-
-    console.log(`🆕 Creating new user for PSID: ${psid}`);
-
-    // Create new user with all required fields
-    const newUserData = {
-      whatsapp_psid: psid,
-      current_state: 'consent_pending',
-      consented_daily: false,
-      preferred_send_hour: 16,
-      timezone_offset_minutes: 120, // SAST default
-      streak_count: 0,
-      correct_answer_rate: 0.0,
-      daily_session_complete: false,
-      total_questions_answered: 0,
-      total_correct_answers: 0,
-      session_question_count: 0,
-      current_question_id: null,
-      current_subject_id: null,
-      last_active_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    console.log(`📝 Creating user with data:`, newUserData);
-
-    const { data: newUser, error: createError } = await supabase
-      .from('users')
-      .insert(newUserData)
-      .select()
-      .single();
-
-    if (createError) {
-      console.error('❌ Error creating user:', createError);
-      throw createError;
-    }
-
-    console.log(`✅ Created new user: ${newUser.id}`);
-    return newUser;
-  } catch (error) {
-    console.error('❌ Error finding/creating user:', error);
-    return null;
-  }
-}
-
-// Helper function to update user state
-async function updateUserState(userId, newState, supabase) {
-  try {
-    const { error } = await supabase
-      .from('users')
-      .update({
-        current_state: newState,
-        updated_at: new Date().toISOString(),
-        last_active_at: new Date().toISOString()
-      })
-      .eq('id', userId);
-
-    if (error) {
-      console.error('❌ Error updating user state:', error);
-      return false;
-    }
-
-    console.log(`✅ Updated user ${userId} state to: ${newState}`);
-    return true;
-  } catch (error) {
-    console.error('❌ Exception updating user state:', error);
-    return false;
-  }
-}
-
-// Handle consent pending state
-async function handleConsentPending(user, userMessage, psid, supabase) {
-  const message = userMessage.toLowerCase().trim();
-
-  if (message === 'yes' || message === 'y' || message === 'yebo' || message === 'ja') {
-    // User consented
-    await updateUserState(user.id, 'subject_selection', supabase);
-    const response = `Yebo! 🔥 Welcome to The GOAT family!\n\nWhich math topic needs work today?\n\n1️⃣ Algebra\n2️⃣ Geometry\n3️⃣ Trigonometry\n4️⃣ Calculus\n\nJust send the number! 🎯`;
-    await sendManyChatReply(psid, response);
-  } else if (message === 'no' || message === 'n' || message === 'nah') {
-    // User declined
-    const response = `No worries! 😊 When you're ready to ace those math exams, just send YES! 🐐`;
-    await sendManyChatReply(psid, response);
-  } else {
-    // Unclear response
-    const response = `Howzit! 🐐 Welcome to The GOAT - your daily math practice buddy!\n\nReady to ace those exams? Send YES to get started! 💪\n\n(Send YES or NO)`;
-    await sendManyChatReply(psid, response);
-  }
-}
-
-// Handle subject selection state
-async function handleSubjectSelection(user, userMessage, psid, supabase) {
-  const message = userMessage.trim();
-
-  const subjects = {
-    1: 'Algebra',
-    2: 'Geometry',
-    3: 'Trigonometry',
-    4: 'Calculus'
-  };
-
-  if (subjects[message]) {
-    // Valid subject selected
-    await updateUserState(user.id, 'time_preference', supabase);
-    const response = `Sharp choice! 📚 ${subjects[message]} it is!\n\nWhen should I send your daily practice?\n\n🌅 Morning (8AM)\n🌞 Afternoon (2PM) \n🌆 Evening (6PM)\n\nJust say Morning, Afternoon, or Evening! ⏰`;
-    await sendManyChatReply(psid, response);
-  } else {
-    // Invalid selection
-    const response = `Eish, I didn't catch that! 🤔\n\nWhich math topic needs work?\n\n1️⃣ Algebra\n2️⃣ Geometry\n3️⃣ Trigonometry\n4️⃣ Calculus\n\nJust send the number (1, 2, 3, or 4)! 🎯`;
-    await sendManyChatReply(psid, response);
-  }
-}
-
-// Handle time preference state
-async function handleTimePreference(user, userMessage, psid, supabase) {
-  const message = userMessage.toLowerCase().trim();
-
-  let hour = null;
-  let timeSlot = '';
-
-  if (message.includes('morning') || message.includes('8')) {
-    hour = 8;
-    timeSlot = 'Morning';
-  } else if (message.includes('afternoon') || message.includes('2')) {
-    hour = 14;
-    timeSlot = 'Afternoon';
-  } else if (message.includes('evening') || message.includes('6')) {
-    hour = 18;
-    timeSlot = 'Evening';
-  }
-
-  if (hour) {
-    // Valid time selected
-    await supabase
-      .from('users')
-      .update({
-        preferred_send_hour: hour,
-        consented_daily: true,
-        current_state: 'idle',
-        updated_at: new Date().toISOString(),
-        last_active_at: new Date().toISOString()
-      })
-      .eq('id', user.id);
-
-    const response = `Perfect! 🎯 You're all set for ${timeSlot} practice sessions!\n\n🐐 Send START anytime for instant practice\n⚡ Daily sessions at ${timeSlot}\n🔥 Let's build that streak!\n\nReady to start? Send START! 💪`;
-    await sendManyChatReply(psid, response);
-  } else {
-    // Invalid time
-    const response = `Hmm, not sure about that time! 🤔\n\nWhen should I send your daily practice?\n\n🌅 Morning (8AM)\n🌞 Afternoon (2PM) \n🌆 Evening (6PM)\n\nJust say Morning, Afternoon, or Evening! ⏰`;
-    await sendManyChatReply(psid, response);
-  }
-}
-
-// Handle idle state (main interaction state)
-async function handleIdleState(user, userMessage, psid, supabase) {
-  const message = userMessage.toLowerCase().trim();
-
-  if (message === 'start' || message === 'begin' || message === 'practice') {
-    // Start practice session
-    await updateUserState(user.id, 'hook_sent', supabase);
-    const response = `Yebo! 🔥 Let's get that brain working!\n\nMath fact: Students who practice 10 minutes daily improve 3x faster! 📈\n\nReady for your first question? Send READY! 🎯`;
-    await sendManyChatReply(psid, response);
-  } else if (message === 'help' || message === 'info') {
-    // Help message
-    const response = `Hey champion! 🐐 Here's what I can do:\n\n📚 Send START for practice\n⚡ Get daily sessions\n🔥 Build your streak\n📈 Track progress\n\nSend START to begin! 💪`;
-    await sendManyChatReply(psid, response);
-  } else {
-    // Default response
-    const response = `Howzit! 🐐 Ready for some math practice?\n\nSend START to begin your session! 💪\n\n(Or send HELP for more options)`;
-    await sendManyChatReply(psid, response);
-  }
-}
-
-// Handle hook sent state
-async function handleHookSent(user, userMessage, psid, supabase) {
-  const message = userMessage.toLowerCase().trim();
-
-  if (message === 'ready' || message === 'yes' || message === 'go') {
-    // User is ready for question
-    await updateUserState(user.id, 'question_sent', supabase);
-
-    // For now, send a simple placeholder question
-    // TODO: Fetch actual question from database
-    const response = `🧮 QUESTION 1:\n\nSolve for x:\n2x + 5 = 13\n\nA) x = 3\nB) x = 4  \nC) x = 5\nD) x = 6\n\nSend A, B, C, or D! ⏰`;
-    await sendManyChatReply(psid, response);
-  } else {
-    // Motivate user
-    const response = `No pressure! 😊 Take your time...\n\nWhen you're ready to tackle this question, just send READY! 🎯\n\n(Remember: Every expert was once a beginner! 🐐)`;
-    await sendManyChatReply(psid, response);
-  }
-}
-
-// Handle question sent state
-async function handleQuestionSent(user, userMessage, psid, supabase) {
-  const answer = userMessage.toUpperCase().trim();
-
-  if (['A', 'B', 'C', 'D'].includes(answer)) {
-    // Valid answer format
-    const correctAnswer = 'B'; // Placeholder - should come from database
-
-    if (answer === correctAnswer) {
-      // Correct answer
-      await updateUserState(user.id, 'idle', supabase);
-      const response = `🎉 BOOM! Correct! 💯\n\nx = 4 is right! 🔥\n\n2(4) + 5 = 8 + 5 = 13 ✅\n\nYou're on fire! 🐐 Send START for another question! 💪`;
-      await sendManyChatReply(psid, response);
-    } else {
-      // Wrong answer
-      await updateUserState(user.id, 'idle', supabase);
-      const response = `Eish, not quite! 😅 The answer was B) x = 4\n\nHere's how:\n2x + 5 = 13\n2x = 13 - 5\n2x = 8\nx = 4 ✅\n\nNo worries! Send START to try another! 🎯`;
-      await sendManyChatReply(psid, response);
-    }
-  } else {
-    // Invalid answer format
-    const response = `Please send A, B, C, or D for your answer! 🎯\n\nThe question is:\n2x + 5 = 13\n\nA) x = 3\nB) x = 4\nC) x = 5  \nD) x = 6`;
-    await sendManyChatReply(psid, response);
-  }
-}
-
-// Main webhook handler
-export default async function handler(req, res) {
-  console.log(`🚀 Webhook called at ${new Date().toISOString()}`);
-  console.log(`📥 Method: ${req.method}`);
-  console.log(`📝 Body:`, JSON.stringify(req.body, null, 2));
-
-  // Validate environment first
-  if (!validateEnvironment()) {
-    console.error(`❌ Environment validation failed`);
-    return res.status(200).json({ status: 'success', note: 'Configuration issue' });
-  }
-
-  if (req.method !== 'POST') {
-    console.log(`❌ Method not allowed: ${req.method}`);
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  try {
-    // Support multiple field name variations from ManyChat
-    const { psid, text, message, last_input_text } = req.body;
-    const userMessage = text || message || last_input_text;
-
-    console.log(`📊 Extracted: PSID=${psid}, Message="${userMessage}"`);
-
-    if (!psid || !userMessage) {
-      console.log(`❌ Missing fields: psid=${psid}, message=${userMessage}`);
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    // Initialize Supabase client
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
-
-    // Find or create user
-    const user = await findOrCreateUser(psid, supabase);
+    // Create user if doesn't exist
     if (!user) {
-      console.log(`❌ Failed to find/create user for PSID: ${psid}`);
-      return res.status(200).json({ status: 'success', note: 'User creation failed' });
+      console.log('👤 Creating new user');
+      const { data: newUser, error: createError } = await supabase
+        .from('users')
+        .insert({
+          whatsapp_psid: psid,
+          user_state: 'subject_selection',
+          correct_answer_rate: 0.5,
+          streak_count: 0,
+          current_question_id: null,
+          last_active_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('❌ Error creating user:', createError);
+        throw createError;
+      }
+
+      user = newUser;
+      console.log('✅ New user created:', user.id);
+    } else {
+      console.log('✅ Found existing user:', user.id);
     }
 
-    console.log(`✅ User loaded: ${user.id}, State: ${user.current_state}`);
+    console.log(`✅ User loaded: ${user.id}, State: ${user.user_state}`);
 
-    // Route based on current state
-    switch (user.current_state) {
-      case 'consent_pending':
-        await handleConsentPending(user, userMessage, psid, supabase);
-        break;
+    let replyMessage = '';
 
-      case 'subject_selection':
-        await handleSubjectSelection(user, userMessage, psid, supabase);
-        break;
+    // Handle different user states
+    if (user.user_state === 'subject_selection') {
+      // User is in subject selection mode
+      const trimmedMessage = message.trim();
 
-      case 'time_preference':
-        await handleTimePreference(user, userMessage, psid, supabase);
-        break;
+      if (['1', '2', '3', '4'].includes(trimmedMessage)) {
+        const subjects = {
+          1: 'algebra',
+          2: 'geometry',
+          3: 'trigonometry',
+          4: 'calculus'
+        };
 
-      case 'idle':
-      case 'declined_daily':
-      case 'session_complete':
-        await handleIdleState(user, userMessage, psid, supabase);
-        break;
+        const selectedSubject = subjects[trimmedMessage];
+        console.log(`📚 User selected subject: ${selectedSubject}`);
 
-      case 'hook_sent':
-        await handleHookSent(user, userMessage, psid, supabase);
-        break;
+        // Update user state to active and set subject
+        await supabase
+          .from('users')
+          .update({
+            user_state: 'active',
+            selected_subject: selectedSubject,
+            last_active_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
 
-      case 'question_sent':
-        await handleQuestionSent(user, userMessage, psid, supabase);
-        break;
+        // Get first question for this subject
+        const difficulty = getDifficultyForUser(user.correct_answer_rate);
 
-      case 'answered_question':
-        await handleIdleState(user, userMessage, psid, supabase);
-        break;
+        const { data: question, error: questionError } = await supabase
+          .from('mcqs')
+          .select('*')
+          .eq('topic', selectedSubject)
+          .eq('difficulty', difficulty)
+          .order('last_served_at', { ascending: true, nullsFirst: true })
+          .limit(1)
+          .single();
 
-      case 'additional_question_sent':
-        await handleQuestionSent(user, userMessage, psid, supabase);
-        break;
+        if (questionError || !question) {
+          console.log('❌ No questions found for subject:', selectedSubject);
+          replyMessage = `Sharp choice on ${selectedSubject.charAt(0).toUpperCase() + selectedSubject.slice(1)}! 📚\n\nWe're still loading questions for this topic. Check back soon - we'll have some fire problems for you! 🔥`;
+        } else {
+          // Format question for WhatsApp
+          replyMessage = `🎯 ${selectedSubject.charAt(0).toUpperCase() + selectedSubject.slice(1)} Question:\n\n${question.question_text}\n\n`;
 
-      default:
-        console.log(`⚠️ Unknown state: ${user.current_state}, resetting to idle`);
-        await updateUserState(user.id, 'idle', supabase);
-        const response = 'Howzit! 🐐 Send START for your daily practice session 👍';
-        await sendManyChatReply(psid, response);
-        break;
+          const choices = JSON.parse(question.choices);
+          choices.forEach((choice, index) => {
+            replyMessage += `${String.fromCharCode(65 + index)}) ${choice.text}\n`;
+          });
+
+          replyMessage += `\nJust send the letter (A, B, C, or D)! 💪`;
+
+          // Update user with current question
+          await supabase
+            .from('users')
+            .update({
+              current_question_id: question.id,
+              last_active_at: new Date().toISOString()
+            })
+            .eq('id', user.id);
+
+          // Update question's last served time
+          await supabase
+            .from('mcqs')
+            .update({ last_served_at: new Date().toISOString() })
+            .eq('id', question.id);
+        }
+      } else {
+        // Invalid subject selection
+        replyMessage = `Eish, I didn't catch that! 🤔\n\nWhich math topic needs work?\n\n1️⃣ Algebra\n2️⃣ Geometry\n3️⃣ Trigonometry\n4️⃣ Calculus\n\nJust send the number (1, 2, 3, or 4)! 🎯`;
+      }
+    } else if (user.current_question_id) {
+      // User is answering a question
+      console.log(`🤔 User answering question: ${user.current_question_id}`);
+
+      // Get the current question
+      const { data: question, error: questionError } = await supabase
+        .from('mcqs')
+        .select('*')
+        .eq('id', user.current_question_id)
+        .single();
+
+      if (questionError || !question) {
+        console.error('❌ Question not found:', user.current_question_id);
+        replyMessage = "Something went wrong! Let's start fresh. 🔄";
+
+        // Reset user state
+        await supabase
+          .from('users')
+          .update({
+            current_question_id: null,
+            user_state: 'subject_selection',
+            last_active_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+      } else {
+        // Check the answer
+        const userAnswer = message.trim().toUpperCase();
+        const correctAnswer = question.correct_choice.toUpperCase();
+        const isCorrect = userAnswer === correctAnswer;
+
+        console.log(
+          `✅ User answer: ${userAnswer}, Correct: ${correctAnswer}, Match: ${isCorrect}`
+        );
+
+        let newStreakCount = user.streak_count;
+        let newCorrectAnswerRate = updateCorrectAnswerRate(user.correct_answer_rate, isCorrect);
+
+        if (isCorrect) {
+          // Correct answer
+          newStreakCount += 1;
+          replyMessage = `💯 You nailed it! Keep the streak going!\n\nStreak: ${newStreakCount} 🔥\n\nReady for another one? Send "next" for more practice! 💪`;
+        } else {
+          // Incorrect answer
+          newStreakCount = 0;
+
+          // Find the weakness tag for the chosen answer
+          const choices = JSON.parse(question.choices);
+          const chosenChoice = choices.find((choice) => choice.choice === userAnswer);
+          const weaknessTag = chosenChoice ? chosenChoice.weakness_tag : 'general';
+
+          // Log the weakness
+          if (chosenChoice && weaknessTag) {
+            await supabase.from('user_weaknesses').insert({
+              user_id: user.id,
+              weakness_tag: weaknessTag,
+              logged_at: new Date().toISOString()
+            });
+          }
+
+          replyMessage = `Aweh, good try! 🤝 That's a classic slip-up with ${weaknessTag}. Double-check that next time!\n\nThe right answer was ${correctAnswer}. Don't stress - that's how we learn! 💪\n\nSend "next" to keep going! 🔥`;
+        }
+
+        // Update user stats and clear current question
+        await supabase
+          .from('users')
+          .update({
+            current_question_id: null,
+            streak_count: newStreakCount,
+            correct_answer_rate: newCorrectAnswerRate,
+            user_state: 'active',
+            last_active_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+      }
+    } else {
+      // User wants a new question or general interaction
+      const normalizedMessage = message.trim().toLowerCase();
+
+      if (
+        normalizedMessage === 'next' ||
+        normalizedMessage.includes('question') ||
+        normalizedMessage.includes('another')
+      ) {
+        // User wants a new question
+        const difficulty = getDifficultyForUser(user.correct_answer_rate);
+        const subject = user.selected_subject || 'algebra'; // Default fallback
+
+        const { data: question, error: questionError } = await supabase
+          .from('mcqs')
+          .select('*')
+          .eq('topic', subject)
+          .eq('difficulty', difficulty)
+          .order('last_served_at', { ascending: true, nullsFirst: true })
+          .limit(1)
+          .single();
+
+        if (questionError || !question) {
+          replyMessage = `No more ${difficulty} ${subject} questions right now! 📚\n\nWant to try a different subject? Send:\n1️⃣ Algebra\n2️⃣ Geometry\n3️⃣ Trigonometry\n4️⃣ Calculus`;
+
+          // Set back to subject selection
+          await supabase
+            .from('users')
+            .update({
+              user_state: 'subject_selection',
+              last_active_at: new Date().toISOString()
+            })
+            .eq('id', user.id);
+        } else {
+          // Format and send new question
+          replyMessage = `🎯 ${subject.charAt(0).toUpperCase() + subject.slice(1)} Question:\n\n${question.question_text}\n\n`;
+
+          const choices = JSON.parse(question.choices);
+          choices.forEach((choice, index) => {
+            replyMessage += `${String.fromCharCode(65 + index)}) ${choice.text}\n`;
+          });
+
+          replyMessage += `\nJust send the letter (A, B, C, or D)! 💪`;
+
+          // Update user with new question
+          await supabase
+            .from('users')
+            .update({
+              current_question_id: question.id,
+              last_active_at: new Date().toISOString()
+            })
+            .eq('id', user.id);
+
+          // Update question's last served time
+          await supabase
+            .from('mcqs')
+            .update({ last_served_at: new Date().toISOString() })
+            .eq('id', question.id);
+        }
+      } else {
+        // General greeting or unknown command
+        replyMessage = `Howzit! Welcome to The GOAT! 🐐\n\nI'm here to help you crush your math exams. Which topic do you want to practice?\n\n1️⃣ Algebra\n2️⃣ Geometry\n3️⃣ Trigonometry\n4️⃣ Calculus\n\nJust send the number! 🎯`;
+
+        // Set to subject selection mode
+        await supabase
+          .from('users')
+          .update({
+            user_state: 'subject_selection',
+            current_question_id: null,
+            last_active_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+      }
     }
 
-    console.log(`✅ Webhook completed successfully`);
+    // Send reply to ManyChat
+    await sendManyChatReply(psid, replyMessage);
+
+    // Return success response to ManyChat
+    console.log('✅ Webhook completed successfully');
     return res.status(200).json({ status: 'success' });
   } catch (error) {
     console.error('❌ Webhook error:', error);
 
-    // Best effort user notification (only if we have psid)
+    // Try to send a generic error message to user
     try {
-      if (req.body?.psid) {
+      const { psid } = req.body;
+      if (psid) {
         await sendManyChatReply(
-          req.body.psid,
-          'Eish, something glitched. Try again in a moment 🔄'
+          psid,
+          'Eish, something went wrong on my side! 😅 Try sending another message in a few seconds.'
         );
       }
-    } catch (notificationError) {
-      console.error('❌ Failed to send error notification:', notificationError);
+    } catch (replyError) {
+      console.error('❌ Failed to send error message:', replyError);
     }
 
-    // Always return 200 to prevent ManyChat retries
-    return res.status(200).json({ status: 'success' });
+    // Always return 200 to ManyChat to prevent retries
+    return res.status(200).json({ status: 'error', message: error.message });
   }
 }
