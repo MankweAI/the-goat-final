@@ -10,6 +10,8 @@ import {
   isUserRegistrationComplete,
   updateUserActivity
 } from './services/userService.js';
+import { menuHandler } from './handlers/menuHandler.js';
+import { friendsService } from './services/friendsService.js';
 import { handleRegistration, getWelcomeMessage } from './handlers/registrationHandler.js';
 import { handleQuestionRequest, handleSubjectSwitch } from './handlers/questionHandler.js';
 import { handleAnswerSubmission } from './handlers/answerHandler.js';
@@ -97,44 +99,88 @@ export default async function handler(req, res) {
     }
 
     // Parse user command
-    const command = parseCommand(message);
+const command = parseCommand(message, {
+  current_menu: user.current_menu,
+  expecting_username: user.expecting_input === 'username_for_friend',
+  expecting_challenge_username: user.expecting_input === 'username_for_challenge'
+});
     console.log(`🎯 Command: ${command.type} - ${command.action}`);
 
     // Handle different command types
     let reply = '';
 
-    switch (command.type) {
-      case CONSTANTS.COMMAND_TYPES.QUESTION:
-        reply = await handleQuestionCommand(user, command);
-        break;
+switch (command.type) {
+  case 'main_menu':
+    reply = await menuHandler.showMainMenu(user);
+    break;
 
-      case CONSTANTS.COMMAND_TYPES.ANSWER:
-        reply = await handleAnswerCommand(user, command);
-        break;
+  case 'subject_menu':
+    reply = await menuHandler.showSubjectMenu(user);
+    break;
 
-      case CONSTANTS.COMMAND_TYPES.SUBJECT_SWITCH:
-        reply = await handleSubjectSwitchCommand(user, command);
-        break;
+  case 'friends_menu':
+    reply = await menuHandler.showFriendsMenu(user);
+    break;
 
-      case CONSTANTS.COMMAND_TYPES.REPORT:
-        reply = await handleReportCommand(user);
-        break;
+  case 'settings_menu':
+    reply = await menuHandler.showSettingsMenu(user);
+    break;
 
-      case CONSTANTS.COMMAND_TYPES.FRIENDS:
-        reply = await handleFriendsCommand(user, command);
-        break;
+  case CONSTANTS.COMMAND_TYPES.QUESTION:
+    reply = await handleQuestionCommand(user, command);
+    break;
 
-      case CONSTANTS.COMMAND_TYPES.CHALLENGE:
-        reply = await handleChallengeCommand(user, command);
-        break;
+  case CONSTANTS.COMMAND_TYPES.ANSWER:
+    reply = await handleAnswerCommand(user, command);
+    break;
 
-      case CONSTANTS.COMMAND_TYPES.HELP:
-        reply = generateHelpMessage(user);
-        break;
+  case CONSTANTS.COMMAND_TYPES.SUBJECT_SWITCH:
+    reply = await handleSubjectSwitchCommand(user, command);
+    break;
 
-      default:
-        reply =
-          "I didn't catch that! Type 'help' to see what I can do, or 'next' for a question! 🎯";
+  case CONSTANTS.COMMAND_TYPES.REPORT:
+    reply = await handleReportCommand(user);
+    break;
+
+  case CONSTANTS.COMMAND_TYPES.FRIENDS:
+    reply = await handleFriendsCommand(user, command);
+    break;
+
+  case 'invalid_option':
+    reply = menuHandler.handleInvalidOption(command.menu);
+    break;
+
+  case CONSTANTS.COMMAND_TYPES.HELP:
+    reply = generateHelpMessage(user);
+    break;
+
+  default:
+    reply = await menuHandler.showMainMenu(user);
+    }
+    
+    async function handleFriendsCommand(user, command) {
+      try {
+        switch (command.action) {
+          case 'list':
+            const friendsList = await friendsService.getUserFriends(user.id);
+            return friendsList.message;
+
+          case 'add_prompt':
+            return await menuHandler.promptAddFriend(user);
+
+          case 'add_user':
+            // Clear expecting input
+            await updateUser(user.id, { expecting_input: null });
+            const result = await friendsService.addFriendByUsername(user.id, command.target);
+            return result.message;
+
+          default:
+            return await menuHandler.showFriendsMenu(user);
+        }
+      } catch (error) {
+        console.error('❌ Friends command error:', error);
+        return `Eish, friends feature glitched! Try "menu" to continue! 👥`;
+      }
     }
 
     // Log GPT usage stats
