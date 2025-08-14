@@ -1,4 +1,4 @@
-const TOKEN = '3137091:cfd971100ea47eac889755f70f02e3a8';
+const TOKEN = '3137091:cb37a7eb051b274f0bc50be4cd1a7314';
 const SUBSCRIBER_ID = '33968862';
 
 async function testWithTag() {

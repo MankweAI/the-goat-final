@@ -1,7 +1,7 @@
 ﻿/**
  * The GOAT - ManyChat Webhook (WhatsApp channel)
  * Architecture: ManyChat (External Request) -> This API Route -> Supabase
- *
+ * 
  * Return and Respond Model:
  * 1. ManyChat sends user input to this webhook
  * 2. Webhook processes logic and generates response
@@ -139,8 +139,8 @@ export default async function handler(req, res) {
 
   // Only accept POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({
-      error: 'Method not allowed',
+    return res.status(405).json({ 
+      error: 'Method not allowed', 
       allowed: ['POST'],
       echo: 'Only POST requests are supported.'
     });
@@ -152,7 +152,7 @@ export default async function handler(req, res) {
 
   // Validate required fields
   if (!subscriberId || !message) {
-    return res.status(400).json({
+    return res.status(400).json({ 
       error: 'Missing subscriber_id/psid or message',
       echo: 'Missing required fields. Please contact support.'
     });
@@ -184,13 +184,13 @@ export default async function handler(req, res) {
     if (user.current_question_id) {
       // User is answering a question
       console.log(`🎯 User ${subscriberId} answering question ${user.current_question_id}`);
-
+      
       const { question, error: qErr } = await fetchQuestionById(supabase, user.current_question_id);
-
+      
       if (qErr || !question) {
         console.error(`❌ Question ${user.current_question_id} not found:`, qErr?.message);
         reply = `Eish, that question vanished. Let's reset. Send "next" to get a fresh one. 🔄`;
-
+        
         // Reset user's current question
         await supabase
           .from('users')
@@ -264,14 +264,14 @@ export default async function handler(req, res) {
     } else {
       // User needs a new question
       console.log(`🆕 Serving new question to user ${subscriberId}`);
-
+      
       const rate = user.correct_answer_rate ?? 0.5;
       const difficulty = pickDifficulty(rate);
-
+      
       console.log(`🎚️  User rate: ${rate.toFixed(3)}, Selected difficulty: ${difficulty}`);
 
       const { question, error: fetchErr } = await fetchNextQuestion(supabase, difficulty);
-
+      
       if (fetchErr) {
         console.error('❌ Fetch next question error:', fetchErr.message);
         reply = `Eish, struggling to fetch a question right now. Try again in a bit. 🔄`;
@@ -279,10 +279,8 @@ export default async function handler(req, res) {
         console.log(`📚 No more ${difficulty} questions available`);
         reply = `You've smashed all the ${difficulty} questions I've got right now. Pull through later for fresh heat. 🔥`;
       } else {
-        console.log(
-          `📖 Serving question ${question.id} (${difficulty}): ${question.question_text?.substring(0, 50)}...`
-        );
-
+        console.log(`📖 Serving question ${question.id} (${difficulty}): ${question.question_text?.substring(0, 50)}...`);
+        
         reply = formatQuestion(question);
 
         // Update user to track current question and mark question as served
@@ -296,7 +294,10 @@ export default async function handler(req, res) {
                 last_active_at: nowIso
               })
               .eq('id', user.id),
-            supabase.from('mcqs').update({ last_served_at: nowIso }).eq('id', question.id)
+            supabase
+              .from('mcqs')
+              .update({ last_served_at: nowIso })
+              .eq('id', question.id)
           ]);
           console.log(`🔄 Set current question ${question.id} for user ${subscriberId}`);
         } catch (updateErr) {
@@ -311,6 +312,7 @@ export default async function handler(req, res) {
 
     console.log(`✅ Webhook processed successfully in ${responseData.elapsed_ms}ms`);
     console.log(`📤 Response: ${reply.substring(0, 100)}${reply.length > 100 ? '...' : ''}`);
+
   } catch (err) {
     console.error('💥 Webhook processing error:', {
       message: err.message,
@@ -328,4 +330,4 @@ export default async function handler(req, res) {
 
   // Always return 200 with the response data for ManyChat to process
   return res.status(200).json(responseData);
-}
+}Z
