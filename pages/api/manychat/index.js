@@ -153,10 +153,17 @@ switch (command.type) {
   case CONSTANTS.COMMAND_TYPES.HELP:
     reply = generateHelpMessage(user);
     break;
+  case 'manual_hook':
+    reply = await handleManualHook(user, command);
+    break;
+
+  case 'hook_stats':
+    reply = await handleHookStats(user);
+    break;
 
   default:
     reply = await menuHandler.showMainMenu(user);
-    }
+}
     
     async function handleFriendsCommand(user, command) {
       try {
@@ -182,7 +189,45 @@ switch (command.type) {
         return `Eish, friends feature glitched! Try "menu" to continue! 👥`;
       }
     }
+    
+    async function handleManualHook(user, command) {
+      try {
+        const hookType = command.target;
+        const validTypes = ['morning', 'afternoon', 'evening', 'fomo', 'comeback'];
 
+        if (!validTypes.includes(hookType)) {
+          return `Valid hook types: ${validTypes.join(', ')}\n\nExample: "hook morning"`;
+        }
+
+        const hook = await hookService.getHookForUser(user.id, `${hookType}_hook`);
+
+        if (!hook) {
+          return `No ${hookType} hook available right now! 🎣`;
+        }
+
+        return `🎣 ${hookType.toUpperCase()} HOOK:\n\n${hook.message}`;
+      } catch (error) {
+        console.error('❌ Manual hook error:', error);
+        return `Hook system glitched! Try again! 🎣`;
+      }
+    }
+
+    async function handleHookStats(user) {
+      try {
+        const stats = await hookService.getUserHookStats(user.id);
+
+        return (
+          `📊 YOUR HOOK STATS (Last 7 Days)\n\n` +
+          `🎣 Hooks Received: ${stats.total_hooks}\n` +
+          `✅ Responded To: ${stats.responded_count}\n` +
+          `📈 Response Rate: ${stats.response_rate}%\n\n` +
+          `The more you respond, the better the hooks get! 🔥`
+        );
+      } catch (error) {
+        console.error('❌ Hook stats error:', error);
+        return `Stats system glitched! Try "menu" instead! 📊`;
+      }
+    }
     // Log GPT usage stats
     const gptStats = aiService.getUsageStats();
     console.log(

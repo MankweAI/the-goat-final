@@ -7,7 +7,20 @@ export function parseCommand(message, userContext = {}) {
   // Handle menu keyword
   if (msg === 'menu') {
     return { type: 'main_menu', action: 'show' };
-  }
+    }
+    
+    if (msg.startsWith('hook ')) {
+      const hookType = msg.replace('hook ', '').trim();
+      return {
+        type: 'manual_hook',
+        action: 'send',
+        target: hookType
+      };
+    }
+
+    if (msg === 'hook stats') {
+      return { type: 'hook_stats', action: 'show' };
+    }
 
   // Handle numbered menu selections
   if (/^\d+$/.test(msg)) {
