@@ -2,8 +2,11 @@
  * The GOAT - ManyChat Webhook (WhatsApp channel)
  * Architecture: ManyChat (External Request) -> This API Route -> Supabase
  *
- * WA (WhatsApp) ManyChat API base: https://api.manychat.com
- * Correct send endpoint: POST https://api.manychat.com/wa/messages
+ * Return and Respond Model:
+ * 1. ManyChat sends user input to this webhook
+ * 2. Webhook processes logic and generates response
+ * 3. Webhook returns JSON with 'echo' field containing the response
+ * 4. ManyChat displays the 'echo' content to the user
  *
  * Expected inbound JSON body from ManyChat External Request block:
  * {
@@ -11,7 +14,12 @@
  *   "message": "{{last_input}}"           // User's raw message text
  * }
  *
- * For backward compatibility we also accept { psid, message }.
+ * Expected outbound JSON response to ManyChat:
+ * {
+ *   "status": "success",
+ *   "echo": "Bot response text here",
+ *   "elapsed_ms": 123
+ * }
  *
  * Business Rules (from PRD + Implementation Spec):
  *  - If user.current_question_id exists -> treat incoming message as an answer attempt.
@@ -21,7 +29,7 @@
  *  - Streak increments on correct; resets on incorrect.
  *  - On incorrect: log weakness_tag (from chosen distractor) into user_weaknesses table.
  *  - Always update last_served_at for the MCQ served.
- *  - Always end with res.status(200).json({status:'success'}) so ManyChat does not retry
+ *  - Always end with res.status(200).json() with echo field for ManyChat to display
  *    (EXCEPT explicit 400 for missing required fields as per spec).
  *
  * Persona / Tone: South African youth slang, encouraging, sharp, authentic.
@@ -30,14 +38,6 @@
 import { createClient } from '@supabase/supabase-js';
 
 // ---------- Environment Helpers ----------
-function reqEnv(name, fallback = undefined) {
-  const v = process.env[name];
-  if (!v && fallback === undefined) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
-  return v || fallback;
-}
-
 function getSupabaseClient() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -85,14 +85,6 @@ function formatQuestion(q) {
 
 function capitalize(s = '') {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-// Note: We don't actually send messages via API - ManyChat will handle display
-// This function would be used if we needed direct API sending
-async function sendManyChatReply(psid, message) {
-  // For now, just log what we would send
-  console.log(`📝 Would send to PSID ${psid}: ${message}`);
-  return true;
 }
 
 // ---------- User & Question Logic ----------
@@ -145,40 +137,61 @@ async function fetchNextQuestion(supabase, difficulty) {
 export default async function handler(req, res) {
   const start = Date.now();
 
+  // Only accept POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed', allowed: ['POST'] });
+    return res.status(405).json({
+      error: 'Method not allowed',
+      allowed: ['POST'],
+      echo: 'Only POST requests are supported.'
+    });
   }
 
-  // Accept both subscriber_id (WhatsApp) and psid (legacy)
+  // Extract subscriber ID and message from request
   const subscriberId = req.body.subscriber_id || req.body.psid;
   const message = req.body.message;
 
+  // Validate required fields
   if (!subscriberId || !message) {
-    // Spec says 400 if missing
-    return res.status(400).json({ error: 'Missing subscriber_id/psid or message' });
+    return res.status(400).json({
+      error: 'Missing subscriber_id/psid or message',
+      echo: 'Missing required fields. Please contact support.'
+    });
   }
 
-  // ManyChat WA subscriber_id should be numeric, but we won't hard-fail if not:
+  // Log request for debugging
+  console.log(`📥 Webhook request from subscriber ${subscriberId}: "${message}"`);
+
+  // Validate WhatsApp subscriber ID format (should be numeric)
   if (!/^\d+$/.test(String(subscriberId))) {
-    console.warn('Non-numeric subscriberId (WA expected numeric):', subscriberId);
+    console.warn(`⚠️  Non-numeric subscriberId (expected numeric for WhatsApp): ${subscriberId}`);
   }
 
-  let reply = '';
+  // Initialize response structure
   let responseData = {
     status: 'success',
-    echo: '', // FIXED: ManyChat expects this field
-    elapsed_ms: 0
+    echo: '',
+    elapsed_ms: 0,
+    subscriber_id: subscriberId,
+    processed_at: new Date().toISOString()
   };
 
   try {
     const supabase = getSupabaseClient();
     const user = await findOrCreateUser(supabase, subscriberId);
 
+    let reply = '';
+
     if (user.current_question_id) {
-      // User answering a question
+      // User is answering a question
+      console.log(`🎯 User ${subscriberId} answering question ${user.current_question_id}`);
+
       const { question, error: qErr } = await fetchQuestionById(supabase, user.current_question_id);
+
       if (qErr || !question) {
+        console.error(`❌ Question ${user.current_question_id} not found:`, qErr?.message);
         reply = `Eish, that question vanished. Let's reset. Send "next" to get a fresh one. 🔄`;
+
+        // Reset user's current question
         await supabase
           .from('users')
           .update({
@@ -187,18 +200,24 @@ export default async function handler(req, res) {
           })
           .eq('id', user.id);
       } else {
+        // Process the user's answer
         const userAns = message.trim().toUpperCase();
         const correct = (question.correct_choice || '').trim().toUpperCase();
         const isCorrect = userAns === correct;
+
+        console.log(`📝 User answer: ${userAns}, Correct: ${correct}, Is Correct: ${isCorrect}`);
 
         let newStreak = user.streak_count || 0;
         let newRate = updateRate(user.correct_answer_rate ?? 0.5, isCorrect);
 
         if (isCorrect) {
+          // Correct answer
           newStreak += 1;
           const vibe = newStreak >= 5 ? '🔥🔥🔥' : newStreak >= 3 ? '🔥🔥' : '🔥';
           reply = `💯 Howzit sharp shooter! You nailed it.\nStreak: ${newStreak} ${vibe}\n\nType "next" for another one.`;
+          console.log(`✅ Correct answer! New streak: ${newStreak}`);
         } else {
+          // Incorrect answer
           newStreak = 0;
           const choices = parseChoices(question.choices);
           const chosen = choices.find(
@@ -208,88 +227,105 @@ export default async function handler(req, res) {
           );
           const weaknessTag = chosen?.weakness_tag || 'that concept';
 
-          // Log weakness with mcq_id column
+          // Log the weakness for analytics
           if (weaknessTag) {
-            const { error: weakErr } = await supabase.from('user_weaknesses').insert({
-              user_id: user.id,
-              mcq_id: question.id,
-              weakness_tag: weaknessTag
-            });
-            if (weakErr) {
-              console.error('Weakness log error:', weakErr.message);
+            try {
+              await supabase.from('user_weaknesses').insert({
+                user_id: user.id,
+                mcq_id: question.id,
+                weakness_tag: weaknessTag
+              });
+              console.log(`📊 Logged weakness: ${weaknessTag}`);
+            } catch (weakErr) {
+              console.error('❌ Weakness log error:', weakErr.message);
             }
           }
 
           reply = `Aweh, not this time. Correct answer was ${correct}. No stress - classic slip in ${weaknessTag}. 💪\n\nType "next" to bounce back.`;
+          console.log(`❌ Incorrect answer. Correct was: ${correct}`);
         }
 
         // Update user stats
-        const { error: userUpdErr } = await supabase
-          .from('users')
-          .update({
-            current_question_id: null,
-            correct_answer_rate: newRate,
-            streak_count: newStreak,
-            last_active_at: new Date().toISOString()
-          })
-          .eq('id', user.id);
-
-        if (userUpdErr) {
-          console.error('User stats update error:', userUpdErr.message);
+        try {
+          await supabase
+            .from('users')
+            .update({
+              current_question_id: null,
+              correct_answer_rate: newRate,
+              streak_count: newStreak,
+              last_active_at: new Date().toISOString()
+            })
+            .eq('id', user.id);
+          console.log(`📈 Updated user stats: rate=${newRate.toFixed(3)}, streak=${newStreak}`);
+        } catch (userUpdErr) {
+          console.error('❌ User stats update error:', userUpdErr.message);
         }
       }
     } else {
-      // Serve new question
-      const rate = user.correct_answer_rate ?? 0.5;
-      const diff = pickDifficulty(rate);
+      // User needs a new question
+      console.log(`🆕 Serving new question to user ${subscriberId}`);
 
-      const { question, error: fetchErr } = await fetchNextQuestion(supabase, diff);
+      const rate = user.correct_answer_rate ?? 0.5;
+      const difficulty = pickDifficulty(rate);
+
+      console.log(`🎚️  User rate: ${rate.toFixed(3)}, Selected difficulty: ${difficulty}`);
+
+      const { question, error: fetchErr } = await fetchNextQuestion(supabase, difficulty);
+
       if (fetchErr) {
-        console.error('Fetch next question error:', fetchErr.message);
+        console.error('❌ Fetch next question error:', fetchErr.message);
         reply = `Eish, struggling to fetch a question right now. Try again in a bit. 🔄`;
       } else if (!question) {
-        reply = `You've smashed all the ${diff} questions I've got right now. Pull through later for fresh heat. 🔥`;
+        console.log(`📚 No more ${difficulty} questions available`);
+        reply = `You've smashed all the ${difficulty} questions I've got right now. Pull through later for fresh heat. 🔥`;
       } else {
+        console.log(
+          `📖 Serving question ${question.id} (${difficulty}): ${question.question_text?.substring(0, 50)}...`
+        );
+
         reply = formatQuestion(question);
 
-        // Update user to hold current question & tag question served
+        // Update user to track current question and mark question as served
         const nowIso = new Date().toISOString();
-        const ups = await Promise.all([
-          supabase
-            .from('users')
-            .update({
-              current_question_id: question.id,
-              last_active_at: nowIso
-            })
-            .eq('id', user.id),
-          supabase.from('mcqs').update({ last_served_at: nowIso }).eq('id', question.id)
-        ]);
-
-        ups.forEach((r, idx) => {
-          if (r.error) {
-            console.error(`Post-serve update error (step ${idx})`, r.error.message);
-          }
-        });
+        try {
+          await Promise.all([
+            supabase
+              .from('users')
+              .update({
+                current_question_id: question.id,
+                last_active_at: nowIso
+              })
+              .eq('id', user.id),
+            supabase.from('mcqs').update({ last_served_at: nowIso }).eq('id', question.id)
+          ]);
+          console.log(`🔄 Set current question ${question.id} for user ${subscriberId}`);
+        } catch (updateErr) {
+          console.error('❌ Question assignment error:', updateErr.message);
+        }
       }
     }
 
-    // FIXED: Set the reply as the echo field that ManyChat expects
+    // Set the response that ManyChat will display to the user
     responseData.echo = reply;
     responseData.elapsed_ms = Date.now() - start;
 
-    console.log(`✅ Webhook processed successfully. Reply: ${reply}`);
+    console.log(`✅ Webhook processed successfully in ${responseData.elapsed_ms}ms`);
+    console.log(`📤 Response: ${reply.substring(0, 100)}${reply.length > 100 ? '...' : ''}`);
   } catch (err) {
-    console.error('Webhook processing error:', {
+    console.error('💥 Webhook processing error:', {
       message: err.message,
-      stack: err.stack
+      stack: err.stack,
+      subscriberId,
+      inputMessage: message
     });
 
-    // Even on error, provide the echo field ManyChat expects
+    // Even on error, provide a user-friendly response
+    responseData.status = 'error';
     responseData.echo = `Eish, something glitched on my side. Give it a sec then try "next" again. 🙏`;
     responseData.elapsed_ms = Date.now() - start;
     responseData.error = err.message;
-  } finally {
-    // FIXED: Always return the expected JSON structure with echo field
-    res.status(200).json(responseData);
   }
+
+  // Always return 200 with the response data for ManyChat to process
+  return res.status(200).json(responseData);
 }
