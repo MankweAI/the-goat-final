@@ -4,41 +4,52 @@ export function parseCommand(message, userContext = {}) {
   const msg = message.trim().toLowerCase();
   const currentMenu = userContext.current_menu || null;
 
-  // Handle menu keyword
+  // PRIORITY 1: Hook commands (for testing) - Must come FIRST
+  if (msg.startsWith('hook ')) {
+    const hookType = msg.replace('hook ', '').trim();
+    return {
+      type: 'manual_hook',
+      action: 'send',
+      target: hookType
+    };
+  }
+
+  // Hook stats command
+  if (msg === 'hook stats') {
+    return { type: 'hook_stats', action: 'show' };
+  }
+
+  // PRIORITY 2: Registration flow responses
+  if (userContext.expecting_registration_input) {
+    return {
+      type: 'registration',
+      action: 'process_input',
+      value: message.trim()
+    };
+  }
+
+  // PRIORITY 3: Menu keyword
   if (msg === 'menu') {
     return { type: 'main_menu', action: 'show' };
-    }
-    
-    if (msg.startsWith('hook ')) {
-      const hookType = msg.replace('hook ', '').trim();
-      return {
-        type: 'manual_hook',
-        action: 'send',
-        target: hookType
-      };
-    }
+  }
 
-    if (msg === 'hook stats') {
-      return { type: 'hook_stats', action: 'show' };
-    }
-
-  // Handle numbered menu selections
+  // PRIORITY 4: Numbered menu selections
   if (/^\d+$/.test(msg)) {
     const number = parseInt(msg);
     return parseMenuSelection(number, currentMenu);
   }
 
-  // Handle direct question request (backwards compatibility)
+  // PRIORITY 5: Direct question request (backwards compatibility)
   if (['next', 'question', 'q'].includes(msg)) {
     return { type: 'question', action: 'next' };
   }
 
-  // Handle direct report request
+  // PRIORITY 6: Direct report request
   if (['report', 'stats', 'progress'].includes(msg)) {
     return { type: 'report', action: 'show' };
   }
 
-  // Handle letter answers (A, B, C, D)
+  // PRIORITY 7: Letter answers (A, B, C, D)
   if (/^[abcd]$/i.test(msg)) {
     return {
       type: 'answer',
@@ -47,7 +58,7 @@ export function parseCommand(message, userContext = {}) {
     };
   }
 
-  // Handle username input (when adding friends)
+  // PRIORITY 8: Username input (when adding friends)
   if (userContext.expecting_username) {
     return {
       type: 'friends',
@@ -56,7 +67,7 @@ export function parseCommand(message, userContext = {}) {
     };
   }
 
-  // Handle challenge username input
+  // PRIORITY 9: Challenge username input
   if (userContext.expecting_challenge_username) {
     return {
       type: 'challenge',
@@ -65,8 +76,8 @@ export function parseCommand(message, userContext = {}) {
     };
   }
 
-  // Default: show main menu
-  return { type: 'main_menu', action: 'show' };
+  // PRIORITY 10: Default fallback
+  return { type: 'unknown_command', action: 'show_menu' };
 }
 
 function parseMenuSelection(number, currentMenu) {
