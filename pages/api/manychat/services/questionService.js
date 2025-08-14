@@ -98,7 +98,7 @@ export class QuestionService {
       const now = new Date().toISOString();
 
       // Update user's current question
-      const userUpdate = supabase
+      const { error: userError } = await supabase
         .from('users')
         .update({
           current_question_id: questionId,
@@ -106,20 +106,25 @@ export class QuestionService {
         })
         .eq('id', userId);
 
+      if (userError) throw userError;
+
+      // Get current times_served count first
+      const { data: currentQuestion } = await supabase
+        .from('mcqs')
+        .select('times_served')
+        .eq('id', questionId)
+        .single();
+
       // Update question served stats
-      const questionUpdate = supabase
+      const { error: questionError } = await supabase
         .from('mcqs')
         .update({
           last_served_at: now,
-          times_served: supabase.raw('times_served + 1')
+          times_served: (currentQuestion?.times_served || 0) + 1
         })
         .eq('id', questionId);
 
-      // Execute both updates
-      const [userResult, questionResult] = await Promise.all([userUpdate, questionUpdate]);
-
-      if (userResult.error) throw userResult.error;
-      if (questionResult.error) throw questionResult.error;
+      if (questionError) throw questionError;
 
       console.log(`✅ Question ${questionId} served to user ${userId}`);
     });
@@ -169,18 +174,24 @@ export class QuestionService {
 
       if (responseError) throw responseError;
 
+      // Get current question stats
+      const { data: currentStats } = await supabase
+        .from('mcqs')
+        .select('times_correct, times_served')
+        .eq('id', questionId)
+        .single();
+
+      // Calculate new stats
+      const newTimesCorrect = (currentStats?.times_correct || 0) + (isCorrect ? 1 : 0);
+      const timesServed = currentStats?.times_served || 1;
+      const newAccuracyRate = timesServed > 0 ? newTimesCorrect / timesServed : 0;
+
       // Update question stats
       await supabase
         .from('mcqs')
         .update({
-          times_correct: supabase.raw(`times_correct + ${isCorrect ? 1 : 0}`),
-          accuracy_rate: supabase.raw(`
-            CASE 
-              WHEN times_served > 0 
-              THEN (times_correct::float + ${isCorrect ? 1 : 0}) / times_served 
-              ELSE 0 
-            END
-          `)
+          times_correct: newTimesCorrect,
+          accuracy_rate: newAccuracyRate
         })
         .eq('id', questionId);
 
@@ -207,24 +218,41 @@ export class QuestionService {
 
       const weaknessTag = choiceData?.weakness_tag || 'general_concept';
 
-      // Insert or update weakness record
-      const { error } = await supabase.from('user_weaknesses').upsert(
-        {
+      // Check if weakness already exists
+      const { data: existingWeakness } = await supabase
+        .from('user_weaknesses')
+        .select('id, occurrence_count')
+        .eq('user_id', userId)
+        .eq('mcq_id', questionId)
+        .eq('weakness_tag', weaknessTag)
+        .maybeSingle();
+
+      if (existingWeakness) {
+        // Update existing weakness
+        const { error } = await supabase
+          .from('user_weaknesses')
+          .update({
+            occurrence_count: existingWeakness.occurrence_count + 1,
+            last_logged_at: new Date().toISOString()
+          })
+          .eq('id', existingWeakness.id);
+
+        if (error) throw error;
+      } else {
+        // Insert new weakness
+        const { error } = await supabase.from('user_weaknesses').insert({
           user_id: userId,
           mcq_id: questionId,
           weakness_tag: weaknessTag,
           topic_id: topicId,
           subject_id: subjectId,
-          occurrence_count: supabase.raw('COALESCE(occurrence_count, 0) + 1'),
+          occurrence_count: 1,
+          first_logged_at: new Date().toISOString(),
           last_logged_at: new Date().toISOString()
-        },
-        {
-          onConflict: 'user_id,mcq_id,weakness_tag',
-          ignoreDuplicates: false
-        }
-      );
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+      }
 
       console.log(`📝 Weakness logged: ${weaknessTag} for user ${userId}`);
       return weaknessTag;
@@ -276,4 +304,3 @@ export class QuestionService {
 
 // Singleton instance
 export const questionService = new QuestionService();
-
