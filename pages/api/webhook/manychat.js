@@ -330,4 +330,4 @@ export default async function handler(req, res) {
 
   // Always return 200 with the response data for ManyChat to process
   return res.status(200).json(responseData);
-}Z
+}
