@@ -6,12 +6,22 @@ export function getOpenAIClient() {
   if (openaiClient) return openaiClient;
 
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY environment variable is missing');
+  if (!apiKey || apiKey.length < 10 || !apiKey.startsWith('sk-')) {
+    throw new Error('Invalid or missing OPENAI_API_KEY environment variable');
   }
 
-  openaiClient = new OpenAI({ apiKey });
-  return openaiClient;
+  try {
+    openaiClient = new OpenAI({
+      apiKey,
+      timeout: OPENAI_CONFIG.TIMEOUT_MS,
+      maxRetries: OPENAI_CONFIG.MAX_RETRIES
+    });
+    console.log('✅ OpenAI client initialized successfully');
+    return openaiClient;
+  } catch (error) {
+    console.error('❌ Failed to initialize OpenAI client:', error);
+    throw new Error(`OpenAI initialization failed: ${error.message}`);
+  }
 }
 
 export const OPENAI_CONFIG = {
@@ -19,13 +29,14 @@ export const OPENAI_CONFIG = {
   MAX_TOKENS: parseInt(process.env.OPENAI_MAX_TOKENS) || 500,
   TEMPERATURE: parseFloat(process.env.OPENAI_TEMPERATURE) || 0.7,
 
-  // Rate limiting
   MAX_RETRIES: 3,
-  TIMEOUT_MS: 10000,
+  TIMEOUT_MS: 15000,
 
-  // Fallback settings
   ENABLE_FALLBACK: true,
-  FALLBACK_ON_ERROR: true
+  FALLBACK_ON_ERROR: true,
+
+  RATE_LIMIT_PER_MINUTE: 50,
+  COST_LIMIT_PER_DAY: 10.0
 };
 
 export const GPT_PROMPTS = {
@@ -70,3 +81,21 @@ Focus on building confidence and celebrating progress.
 Include relevant emojis.`
 };
 
+export async function testOpenAIConnection() {
+  try {
+    const client = getOpenAIClient();
+    const response = await client.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: 'Test connection' }],
+      max_tokens: 5
+    });
+    if (response.choices && response.choices.length > 0) {
+      console.log('✅ OpenAI connection test successful');
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('❌ OpenAI connection test failed:', error);
+    return false;
+  }
+}

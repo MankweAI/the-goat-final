@@ -1,6 +1,6 @@
 /**
- * Enhanced Command Parser with Corrected Logic Priority
- * Date: 2025-08-15 18:30:00 UTC
+ * Enhanced Command Parser with Fixed Logic Priority and Validation
+ * Date: 2025-08-15 17:13:45 UTC
  */
 
 import { CONSTANTS } from '../config/constants.js';
@@ -9,9 +9,8 @@ export function parseCommand(input, context = {}) {
   const trimmed = input.trim().toLowerCase();
   const originalInput = input.trim();
 
-  console.log(`🔍 Parsing command: "${trimmed}" with context:`, context);
+  console.log(`🔍 Parsing command: "${trimmed}" with context:`, context); // PRIORITY 1: Handle answer submissions if a question is active
 
-  // PRIORITY 1: Handle answer submissions if a question is active.
   if (context.expecting_answer || context.has_current_question) {
     const answerResult = parseAnswerInput(originalInput);
     if (answerResult.isValid) {
@@ -20,35 +19,29 @@ export function parseCommand(input, context = {}) {
     if (answerResult.isInvalid) {
       return { type: 'invalid_answer', error: answerResult.error };
     }
-  }
+  } // PRIORITY 2: Handle numbered menu inputs BEFORE global text commands
 
-  // *** FIX B: Handle numbered menu inputs BEFORE global text commands. ***
-  // This is the critical change. If the user is in a menu, their number input takes priority.
   if (context.current_menu) {
     const menuResult = parseMenuInput(originalInput, context.current_menu);
     if (menuResult.isValid) {
       console.log(`✅ Valid menu input parsed:`, menuResult.command);
       return menuResult.command;
     }
-    // If it's not a valid number for the menu, it might be a global command, so we continue.
-  }
+  } // PRIORITY 3: Handle global text commands
 
-  // PRIORITY 3: Handle global text commands (e.g., "menu", "help").
   const globalCommand = parseGlobalCommands(trimmed, originalInput);
   if (globalCommand.type !== 'unrecognized') {
     console.log(`✅ Global command recognized: ${globalCommand.type}`);
     return globalCommand;
-  }
+  } // PRIORITY 4: Handle contextual text inputs
 
-  // PRIORITY 4: Handle contextual text inputs (e.g., entering a username).
   if (context.expecting_registration_input) {
     return { type: 'registration', action: 'process_input', originalInput };
   }
   if (context.expecting_username) {
     return { type: CONSTANTS.COMMAND_TYPES.FRIENDS, action: 'add_user', target: trimmed };
-  }
+  } // PRIORITY 5: Invalid option for current menu
 
-  // PRIORITY 5: If it's not a menu choice and not a global command, it's an invalid option for the current menu.
   if (context.current_menu) {
     return {
       type: 'invalid_option',
@@ -56,9 +49,8 @@ export function parseCommand(input, context = {}) {
       attempted: originalInput,
       validRange: getMenuRange(context.current_menu)
     };
-  }
+  } // DEFAULT: Fallback for unrecognized input
 
-  // DEFAULT: Fallback for unrecognized input when not in any specific context.
   console.log(`⚠️ Unrecognized input: "${trimmed}"`);
   return { type: 'unrecognized', originalInput };
 }
@@ -66,7 +58,7 @@ export function parseCommand(input, context = {}) {
 function parseMenuInput(input, currentMenu) {
   const number = parseInt(input.trim(), 10);
   if (isNaN(number)) {
-    return { isValid: false }; // Not a number, so it can't be a menu selection.
+    return { isValid: false };
   }
 
   const menuMappings = {
@@ -109,12 +101,8 @@ function parseMenuInput(input, currentMenu) {
     return { isValid: true, command: { ...mapping[number], menuChoice: number } };
   }
 
-  // It was a number, but not a valid one for this menu.
   return { isValid: false };
 }
-
-// Other helper functions (parseGlobalCommands, parseAnswerInput, getMenuRange) remain the same.
-// They are included here for completeness.
 
 function parseGlobalCommands(trimmed, originalInput) {
   const commandMap = {
@@ -131,7 +119,10 @@ function parseGlobalCommands(trimmed, originalInput) {
   }
 
   if (trimmed.startsWith('hook ')) {
-    return { type: 'manual_hook', target: trimmed.split(' ')[1], originalInput };
+    const target = trimmed.split(' ')[1];
+    if (target && /^[a-z]+$/.test(target)) {
+      return { type: 'manual_hook', target, originalInput };
+    }
   }
   if (trimmed === 'hook stats') {
     return { type: 'hook_stats', originalInput };
@@ -148,20 +139,17 @@ function parseAnswerInput(input) {
     return { isValid: true, answer: trimmed };
   }
 
-  // More flexible parsing for "A.", "A)", etc.
   if (trimmed.length > 0 && validAnswers.includes(trimmed.charAt(0))) {
     const letter = trimmed.charAt(0);
-    // Check if the rest is just punctuation
     if (/^[\.\)]?$/.test(trimmed.slice(1))) {
       return { isValid: true, answer: letter };
     }
   }
 
-  // Check if it looks like an invalid attempt
-  if (/^\d+$/.test(input.trim()) || /^[E-Z]$/i.test(input.trim())) {
+  if (trimmed.length > 0) {
     return {
       isInvalid: true,
-      error: `Invalid answer format! 📝\n\nFor multiple choice questions, just send A, B, C, or D.`
+      error: `Invalid answer! 📝\n\nFor multiple choice questions, send A, B, C, or D only.`
     };
   }
 

@@ -1,35 +1,26 @@
 /**
- * Post-Answer Experience Handler (Corrected)
- * Provides comprehensive feedback, progress tracking, and a structured, numbered menu for next actions.
+ * Post-Answer Experience Handler (Fixed)
+ * Date: 2025-08-15 17:13:45 UTC
  */
 
 import { updateUser } from '../services/userService.js';
-import { aiService } from '../services/aiService.js';
 import { formatStreak, formatPercentage, formatTopicName } from '../utils/responseFormatter.js';
-import { menuHandler } from './menuHandler.js'; // For showing menus
-import { handleQuestionRequest } from './questionHandler.js'; // For getting next question
+import { menuHandler } from './menuHandler.js';
+import { handleQuestionRequest } from './questionHandler.js';
 
-/**
- * Main function to handle the action selected from the post-answer menu.
- * @param {object} user - The user object.
- * @param {number} actionNumber - The number the user selected (1-5).
- * @returns {string} The reply message for the user.
- */
 export async function handlePostAnswerAction(user, actionNumber) {
   try {
     console.log(`🎯 Post-answer action ${actionNumber} selected by user ${user.id}`);
 
-    // This logic is based on the new, dynamic menu presented to the user.
-    // We will map the numbers to specific actions.
     switch (actionNumber) {
-      case 1: // Next Question (in the same topic)
+      case 1: // Next Question
         return await handleQuestionRequest(user, { action: 'next' });
       case 2: // Switch Topic/Subject
         return await menuHandler.showSubjectMenu(user);
-      case 3: // Challenge a Friend or Review Concepts
-        return await menuHandler.showFriendsMenu(user); // Simplified to Friends Menu
+      case 3: // Challenge a Friend
+        return await menuHandler.showFriendsMenu(user);
       case 4: // Progress Report
-        return await handleReportCommand(user); // Assuming handleReportCommand exists in index.js
+        return await generateProgressReport(user);
       case 5: // Main Menu
         return await menuHandler.showMainMenu(user);
       default:
@@ -41,20 +32,55 @@ export async function handlePostAnswerAction(user, actionNumber) {
   }
 }
 
-/**
- * Generates the complete post-answer response, including feedback and the crucial numbered menu.
- * @param {object} user - The user object.
- * @param {object} question - The question that was answered.
- * @param {object} answerResult - An object containing details about the answer.
- * @returns {string} The complete message to be sent to the user.
- */
+async function generateProgressReport(user) {
+  try {
+    const totalQuestions = user.total_questions_answered || 0;
+    const correctAnswers = user.total_correct_answers || 0;
+    const accuracy = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
+    const streak = user.streak_count || 0;
+
+    await updateUser(user.id, {
+      current_menu: 'main',
+      last_active_at: new Date().toISOString()
+    });
+
+    let report = `🏆 **YOUR PROGRESS REPORT**\n\n`;
+    report += `📈 **Overall Stats:**\n`;
+    report += `• Questions answered: ${totalQuestions}\n`;
+    report += `• Accuracy rate: ${accuracy}%\n`;
+    report += `• Current streak: ${streak}\n`;
+    report += `• Level: ${getLevel(totalQuestions)}\n\n`;
+
+    if (accuracy >= 80) {
+      report += `🔥 Outstanding performance! You're crushing it!\n\n`;
+    } else if (accuracy >= 60) {
+      report += `💪 Good progress! Keep pushing forward!\n\n`;
+    } else {
+      report += `📚 Keep practicing! Every question makes you stronger!\n\n`;
+    }
+
+    report += `Ready for more? Type "next" for another question! 🚀`;
+    return report;
+  } catch (error) {
+    console.error(`❌ Progress report error:`, error);
+    return `Eish, couldn't load your report right now. Try again in a bit! 📊`;
+  }
+}
+
+function getLevel(questionCount) {
+  if (questionCount < 10) return 'Rookie 🥉';
+  if (questionCount < 50) return 'Rising Star ⭐';
+  if (questionCount < 100) return 'Scholar 📚';
+  if (questionCount < 200) return 'Expert 🧠';
+  return 'GOAT 🐐';
+}
+
 export async function generatePostAnswerResponse(user, question, answerResult) {
   try {
     const { isCorrect, newStreak, stats } = answerResult;
 
     console.log(`📊 Generating post-answer response for user ${user.id}: Correct=${isCorrect}`);
 
-    // CRITICAL: Set the user's menu state so the parser knows to expect a numbered reply (1-5).
     await updateUser(user.id, {
       current_menu: 'post_answer',
       last_active_at: new Date().toISOString()
@@ -64,13 +90,12 @@ export async function generatePostAnswerResponse(user, question, answerResult) {
       ? generateCorrectResponse(newStreak, stats, question)
       : generateIncorrectResponse(answerResult, question);
 
-    // This is the numbered menu for what to do next.
     const nextActionsMenu =
       `\n\n**What's next?**\n\n` +
       `1️⃣ Next Question\n` +
       `2️⃣ Change Subject\n` +
-      `3️⃣ See My Report\n` +
-      `4️⃣ Friends & Challenges\n` +
+      `3️⃣ Challenge Friend\n` +
+      `4️⃣ Progress Report\n` +
       `5️⃣ Main Menu\n\n` +
       `Type the number! 💪`;
 
@@ -81,40 +106,36 @@ export async function generatePostAnswerResponse(user, question, answerResult) {
   }
 }
 
-/**
- * Generates the feedback text for a correct answer.
- */
 function generateCorrectResponse(newStreak, stats, question) {
-  const streakEmoji = formatStreak(newStreak);
-  const topicName = formatTopicName(question.topics?.display_name);
+  try {
+    const streakEmoji = formatStreak(newStreak);
+    const topicName = formatTopicName(question.topics?.display_name);
 
-  let response = `💯 Sharp! You nailed it! ${streakEmoji}\n`;
-  if (newStreak > 1) {
-    response += `That's a **${newStreak}-question streak**!\n\n`;
+    let response = `💯 Sharp! You nailed it! ${streakEmoji}\n`;
+    if (newStreak > 1) {
+      response += `That's a **${newStreak}-question streak**!\n\n`;
+    }
+    response += `📈 **${topicName} Accuracy:** ${formatPercentage(stats.accuracy)}%`;
+    return response;
+  } catch (error) {
+    console.error(`❌ generateCorrectResponse error:`, error);
+    return `💯 Correct! 🔥`;
   }
-  response += `📈 **${topicName} Accuracy:** ${formatPercentage(stats.accuracy)}%`;
-  return response;
 }
 
-/**
- * Generates the feedback text for an incorrect answer.
- */
 function generateIncorrectResponse(answerResult, question) {
-  const { correctAnswer, stats, streakLost } = answerResult;
-  const topicName = formatTopicName(question.topics?.display_name);
+  try {
+    const { correctAnswer, stats, streakLost } = answerResult;
+    const topicName = formatTopicName(question.topics?.display_name);
 
-  let response = `Aweh, not this time. The correct answer was **${correctAnswer}**.`;
-  if (streakLost > 1) {
-    response += `\nYour streak of ${streakLost} is over, but you can start a new one now!`;
+    let response = `Aweh, not this time. The correct answer was **${correctAnswer}**.`;
+    if (streakLost > 1) {
+      response += `\nYour streak of ${streakLost} is over, but you can start a new one now!`;
+    }
+    response += `\n\n📈 **${topicName} Accuracy:** ${formatPercentage(stats.accuracy)}%`;
+    return response;
+  } catch (error) {
+    console.error(`❌ generateIncorrectResponse error:`, error);
+    return `Not quite! Try again! 💪`;
   }
-  response += `\n\n📈 **${topicName} Accuracy:** ${formatPercentage(stats.accuracy)}%`;
-  return response;
-}
-
-// A placeholder for a report command function, assuming it would be moved or imported.
-async function handleReportCommand(user) {
-  const totalQuestions = user.total_questions_answered || 0;
-  const correctAnswers = user.total_correct_answers || 0;
-  const accuracy = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
-  return `📊 **Progress Report**\n- Questions Answered: ${totalQuestions}\n- Accuracy: ${accuracy}%`;
 }
