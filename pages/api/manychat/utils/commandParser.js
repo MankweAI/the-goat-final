@@ -1,6 +1,6 @@
 /**
- * Enhanced Command Parser with Fixed Menu Navigation
- * Date: 2025-08-15 15:33:15 UTC
+ * Enhanced Command Parser with Global Command Priority
+ * Date: 2025-08-15 15:55:54 UTC
  */
 
 import { CONSTANTS } from '../config/constants.js';
@@ -9,8 +9,10 @@ export function parseCommand(input, context = {}) {
   const trimmed = input.trim().toLowerCase();
   const originalInput = input.trim();
 
-  console.log(`🔍 Parsing command: "${trimmed}" in menu: ${context.current_menu}`, {
-    context: context
+  console.log(`🔍 Parsing command: "${trimmed}" with context:`, {
+    current_menu: context.current_menu,
+    has_current_question: context.has_current_question,
+    expecting_answer: context.expecting_answer
   });
 
   // ✅ PRIORITY 1: Handle answer submissions first
@@ -52,7 +54,14 @@ export function parseCommand(input, context = {}) {
     };
   }
 
-  // ✅ PRIORITY 4: FIXED MENU NAVIGATION
+  // ✅ PRIORITY 4: GLOBAL COMMANDS (BEFORE MENU PARSING)
+  const globalCommand = parseGlobalCommands(trimmed, originalInput);
+  if (globalCommand.type !== 'unrecognized') {
+    console.log(`✅ Global command recognized: ${globalCommand.type}`);
+    return globalCommand;
+  }
+
+  // ✅ PRIORITY 5: Menu navigation (only if no global command matched)
   if (context.current_menu) {
     const menuResult = parseMenuInput(originalInput, context.current_menu);
     if (menuResult.isValid) {
@@ -72,11 +81,95 @@ export function parseCommand(input, context = {}) {
     }
   }
 
-  // ✅ PRIORITY 5: Handle global commands
-  return parseGlobalCommands(trimmed, originalInput);
+  // ✅ PRIORITY 6: Fallback for unrecognized input
+  console.log(`⚠️ Unrecognized input: "${trimmed}"`);
+  return {
+    type: 'unrecognized',
+    originalInput: originalInput
+  };
 }
 
-// ✅ FIXED: Enhanced menu input parsing
+// ✅ ENHANCED: Global commands parsing (moved up in priority)
+function parseGlobalCommands(trimmed, originalInput) {
+  // Question commands - HIGHEST PRIORITY
+  if (['next', 'question', 'q'].includes(trimmed)) {
+    return {
+      type: CONSTANTS.COMMAND_TYPES.QUESTION,
+      action: 'next',
+      originalInput: originalInput
+    };
+  }
+
+  // Menu commands
+  if (['menu', 'main', 'home'].includes(trimmed)) {
+    return {
+      type: 'main_menu',
+      action: 'show',
+      originalInput: originalInput
+    };
+  }
+
+  // Help commands
+  if (['help', '?', 'info'].includes(trimmed)) {
+    return {
+      type: CONSTANTS.COMMAND_TYPES.HELP,
+      action: 'show',
+      originalInput: originalInput
+    };
+  }
+
+  // Report commands
+  if (['report', 'progress', 'stats'].includes(trimmed)) {
+    return {
+      type: CONSTANTS.COMMAND_TYPES.REPORT,
+      action: 'show',
+      originalInput: originalInput
+    };
+  }
+
+  // Subject commands
+  if (['subjects', 'subject'].includes(trimmed)) {
+    return {
+      type: 'subject_menu',
+      action: 'show',
+      originalInput: originalInput
+    };
+  }
+
+  // Friends commands
+  if (['friends', 'friend'].includes(trimmed)) {
+    return {
+      type: 'friends_menu',
+      action: 'show',
+      originalInput: originalInput
+    };
+  }
+
+  // Hook commands
+  if (trimmed.startsWith('hook ')) {
+    const hookType = trimmed.split(' ')[1];
+    return {
+      type: 'manual_hook',
+      target: hookType,
+      originalInput: originalInput
+    };
+  }
+
+  if (trimmed === 'hook stats') {
+    return {
+      type: 'hook_stats',
+      originalInput: originalInput
+    };
+  }
+
+  // Not a recognized global command
+  return {
+    type: 'unrecognized',
+    originalInput: originalInput
+  };
+}
+
+// ✅ Menu input parsing (unchanged but now lower priority)
 function parseMenuInput(input, currentMenu) {
   try {
     const trimmed = input.trim();
@@ -93,7 +186,7 @@ function parseMenuInput(input, currentMenu) {
       };
     }
 
-    // ✅ FIXED: Main menu handling (most common case)
+    // Main menu handling
     if (currentMenu === 'main' || !currentMenu) {
       if (number >= 1 && number <= 5) {
         const actions = {
@@ -123,7 +216,7 @@ function parseMenuInput(input, currentMenu) {
       };
     }
 
-    // ✅ Subject menu handling
+    // Subject menu handling
     if (currentMenu === 'subject') {
       if (number >= 1 && number <= 5) {
         const actions = {
@@ -151,7 +244,7 @@ function parseMenuInput(input, currentMenu) {
       };
     }
 
-    // ✅ Math topics menu handling
+    // Math topics menu handling
     if (currentMenu === 'math_topics') {
       if (number >= 1 && number <= 9) {
         if (number === 9) {
@@ -184,7 +277,7 @@ function parseMenuInput(input, currentMenu) {
       };
     }
 
-    // ✅ Friends menu handling
+    // Friends menu handling
     if (currentMenu === 'friends') {
       if (number >= 1 && number <= 4) {
         const actions = {
@@ -211,7 +304,7 @@ function parseMenuInput(input, currentMenu) {
       };
     }
 
-    // ✅ Settings menu handling
+    // Settings menu handling
     if (currentMenu === 'settings') {
       if (number >= 1 && number <= 3) {
         const actions = {
@@ -237,7 +330,7 @@ function parseMenuInput(input, currentMenu) {
       };
     }
 
-    // ✅ Post-answer menu handling
+    // Post-answer menu handling
     if (currentMenu === 'post_answer') {
       if (number >= 1 && number <= 5) {
         return {
@@ -275,7 +368,7 @@ function parseMenuInput(input, currentMenu) {
   }
 }
 
-// ✅ Helper function to get menu range
+// Helper functions remain the same...
 function getMenuRange(menu) {
   const ranges = {
     main: '1-5',
@@ -289,11 +382,9 @@ function getMenuRange(menu) {
   return ranges[menu] || '1-5';
 }
 
-// ✅ Answer validation
 function parseAnswerInput(input) {
   const trimmed = input.trim().toUpperCase();
 
-  // Valid answer patterns
   const validAnswers = ['A', 'B', 'C', 'D'];
 
   if (validAnswers.includes(trimmed)) {
@@ -303,7 +394,6 @@ function parseAnswerInput(input) {
     };
   }
 
-  // Check common answer formats
   const answerPatterns = [
     /^([ABCD])\)$/, // A), B), etc.
     /^ANSWER\s*([ABCD])$/i, // ANSWER A
@@ -324,68 +414,5 @@ function parseAnswerInput(input) {
   return {
     isInvalid: true,
     error: `Invalid answer format! 📝\n\nFor multiple choice questions, just send:\n• A, B, C, or D\n\nTry again! 🎯`
-  };
-}
-
-// ✅ Global commands (help, menu, next, etc.)
-function parseGlobalCommands(trimmed, originalInput) {
-  // Question commands
-  if (['next', 'question', 'q'].includes(trimmed)) {
-    return {
-      type: CONSTANTS.COMMAND_TYPES.QUESTION,
-      action: 'next',
-      originalInput: originalInput
-    };
-  }
-
-  // Menu commands
-  if (['menu', 'main', 'home'].includes(trimmed)) {
-    return {
-      type: 'main_menu',
-      action: 'show',
-      originalInput: originalInput
-    };
-  }
-
-  // Help commands
-  if (['help', '?', 'info'].includes(trimmed)) {
-    return {
-      type: CONSTANTS.COMMAND_TYPES.HELP,
-      action: 'show',
-      originalInput: originalInput
-    };
-  }
-
-  // Report commands
-  if (['report', 'progress', 'stats'].includes(trimmed)) {
-    return {
-      type: CONSTANTS.COMMAND_TYPES.REPORT,
-      action: 'show',
-      originalInput: originalInput
-    };
-  }
-
-  // Hook commands
-  if (trimmed.startsWith('hook ')) {
-    const hookType = trimmed.split(' ')[1];
-    return {
-      type: 'manual_hook',
-      target: hookType,
-      originalInput: originalInput
-    };
-  }
-
-  if (trimmed === 'hook stats') {
-    return {
-      type: 'hook_stats',
-      originalInput: originalInput
-    };
-  }
-
-  // Default case
-  console.log(`⚠️ Unrecognized global command: "${trimmed}"`);
-  return {
-    type: 'unrecognized',
-    originalInput: originalInput
   };
 }

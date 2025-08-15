@@ -1,5 +1,6 @@
 /**
- * Enhanced Answer Handler with proper error handling
+ * Fixed Answer Handler - Proper Menu State Management
+ * Date: 2025-08-15 15:55:54 UTC
  */
 
 import { updateUser } from '../services/userService.js';
@@ -30,8 +31,12 @@ export async function handleAnswerSubmission(user, command) {
 
     const { newRate, newStreak } = await updateUserStats(user.id, isCorrect, oldRate, oldStreak);
 
-    // Clear current question
-    await clearUserQuestion(user.id);
+    // ✅ CRITICAL FIX: Clear question AND set proper menu state
+    await updateUser(user.id, {
+      current_question_id: null,
+      current_menu: null, // ✅ CLEAR MENU STATE - allows global commands
+      last_active_at: new Date().toISOString()
+    });
 
     // Log weakness if incorrect
     if (!isCorrect) {
@@ -55,15 +60,21 @@ export async function handleAnswerSubmission(user, command) {
       isCorrect ? null : 'that concept'
     );
 
-    console.log(`✅ Answer processed for user ${user.id}: ${isCorrect ? 'CORRECT' : 'INCORRECT'}`);
+    console.log(
+      `✅ Answer processed for user ${user.id}: ${isCorrect ? 'CORRECT' : 'INCORRECT'}, menu state cleared`
+    );
 
     return feedback;
   } catch (error) {
     console.error(`❌ Answer submission error:`, error);
 
-    // Try to clear question on error
+    // Try to clear question AND menu state on error
     try {
-      await clearUserQuestion(user.id);
+      await updateUser(user.id, {
+        current_question_id: null,
+        current_menu: null, // ✅ CLEAR MENU STATE ON ERROR TOO
+        last_active_at: new Date().toISOString()
+      });
     } catch (clearError) {
       console.error(`💥 Failed to clear question on error:`, clearError);
     }
@@ -72,7 +83,7 @@ export async function handleAnswerSubmission(user, command) {
   }
 }
 
-// Helper function to parse choices
+// Helper functions remain the same...
 function parseChoices(raw) {
   if (!raw) return [];
   try {
@@ -83,7 +94,6 @@ function parseChoices(raw) {
   }
 }
 
-// Import these functions from index.js or make them available
 async function getCurrentQuestion(user) {
   try {
     if (!user.current_question_id) {
@@ -103,19 +113,6 @@ async function getCurrentQuestion(user) {
   } catch (error) {
     console.error(`❌ getCurrentQuestion error:`, error);
     return null;
-  }
-}
-
-async function clearUserQuestion(userId) {
-  try {
-    await updateUser(userId, {
-      current_question_id: null,
-      last_active_at: new Date().toISOString()
-    });
-    return true;
-  } catch (error) {
-    console.error(`❌ clearUserQuestion error:`, error);
-    return false;
   }
 }
 
