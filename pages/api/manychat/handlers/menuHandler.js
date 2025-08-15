@@ -13,8 +13,33 @@ export class MenuHandler {
   }
 
   async showSubjectMenu(user) {
-    await updateUser(user.id, { current_menu: 'subject_menu' });
-    return MESSAGES.MENUS.SUBJECTS;
+    try {
+      await updateUser(user.id, {
+        current_menu: 'subject',
+        last_active_at: new Date().toISOString()
+      });
+
+      const response =
+        `📚 **CHOOSE YOUR SUBJECT**\n\n` +
+        `Which subject do you want to dominate?\n\n` +
+        `1️⃣ 🧮 **Mathematics**\n` +
+        `   → Algebra, Geometry, Trigonometry, Calculus...\n\n` +
+        `2️⃣ ⚡ **Physics**\n` +
+        `   → Mechanics, Waves, Electricity, Magnetism...\n\n` +
+        `3️⃣ 🧬 **Life Sciences**\n` +
+        `   → Biology, Human Body, Ecology, Genetics...\n\n` +
+        `4️⃣ ⚗️ **Chemistry**\n` +
+        `   → Reactions, Organic, Stoichiometry, Acids...\n\n` +
+        `5️⃣ 🏠 Back to main menu\n\n` +
+        `💡 Tip: Math has multiple topic choices!\n\n` +
+        `Type the number! 🎯`;
+
+      console.log(`📱 Showing enhanced subject menu to user ${user.id}`);
+      return response;
+    } catch (error) {
+      console.error(`❌ Subject menu error:`, error);
+      return `Eish, couldn't load subjects. Try "menu"! 🔄`;
+    }
   }
 
   async showFriendsMenu(user) {
@@ -58,4 +83,3 @@ export class MenuHandler {
 }
 
 export const menuHandler = new MenuHandler();
-
