@@ -306,14 +306,14 @@ export const MESSAGES = {
 
     SUBJECTS_PROMPT:
       `Lekker! Which subjects do you want to dominate?\n\n` +
-      `📝 **Available subjects:**\n` +
-      `🧮 math\n` +
-      `⚡ physics\n` +
-      `🧬 life sciences\n` +
-      `⚗️ chemistry\n\n` +
-      `💡 **Type like:** math, physics, life sciences\n` +
-      `(You can always change these later!)\n\n` +
-      `Which subjects interest you? 🎯`
+      `📚 **Choose your subjects:**\n\n` +
+      `1️⃣ 🧮 Mathematics\n` +
+      `2️⃣ ⚡ Physics\n` +
+      `3️⃣ 🧬 Life Sciences\n` +
+      `4️⃣ ⚗️ Chemistry\n\n` +
+      `💡 **Type numbers like:** 1, 3, 4 (for Math, Life Sciences, Chemistry)\n` +
+      `📝 **Or type:** 1,2,3,4 (for all subjects)\n\n` +
+      `Which subjects interest you? Type the numbers! 🎯`
   },
 
   // ✅ ENHANCED: Updated menu messages

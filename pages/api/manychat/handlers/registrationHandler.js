@@ -3,7 +3,7 @@ import {
   isUsernameAvailable,
   getUserRegistrationState
 } from '../services/userService.js';
-import { validateUsername, validateGrade, validateSubjects } from '../utils/validators.js';
+import { validateUsername, validateGrade } from '../utils/validators.js';
 import { CONSTANTS, MESSAGES } from '../config/constants.js';
 
 export async function handleRegistration(user, message) {
@@ -61,13 +61,11 @@ async function handleUsernameRegistration(user, message) {
     };
   }
 
-  // ✅ FIXED: Remove friend code completely
   await updateUser(user.id, {
     username: validation.username,
     last_active_at: new Date().toISOString()
   });
 
-  // ✅ FIXED: Username-only confirmation message
   return {
     reply:
       `Sharp! You're now @${validation.username} 🔥\n\n` +
@@ -100,12 +98,13 @@ async function handleGradeRegistration(user, message) {
   };
 }
 
+// ✅ COMPLETELY REWRITTEN: Now uses numbered input instead of text
 async function handleSubjectsRegistration(user, message) {
-  const validation = validateSubjects(message);
+  const validation = validateSubjectsFromNumbers(message);
 
   if (!validation.isValid) {
     return {
-      reply: `${validation.error}\n${validation.example || ''} 📝`,
+      reply: `${validation.error}\n\n${MESSAGES.REGISTRATION.SUBJECTS_PROMPT}`,
       shouldContinue: false
     };
   }
@@ -128,7 +127,73 @@ async function handleSubjectsRegistration(user, message) {
   };
 }
 
-// ✅ FIXED: Remove friend code references
+// ✅ NEW: Validate subjects from numbered input
+function validateSubjectsFromNumbers(input) {
+  try {
+    const trimmed = input.trim();
+
+    // Extract numbers from input (support various formats)
+    const numberMatches = trimmed.match(/\d+/g);
+
+    if (!numberMatches || numberMatches.length === 0) {
+      return {
+        isValid: false,
+        error:
+          `Please use numbers to select subjects! 🔢\n\n` +
+          `Example: Type "1,3" for Math and Life Sciences\n` +
+          `Or: "1 3" or "1, 3" - any format works!`
+      };
+    }
+
+    // Convert to unique numbers and filter valid ones (1-4)
+    const numbers = [...new Set(numberMatches.map((n) => parseInt(n)))]
+      .filter((n) => n >= 1 && n <= 4)
+      .sort();
+
+    if (numbers.length === 0) {
+      return {
+        isValid: false,
+        error:
+          `Valid subject numbers are 1-4 only! 📚\n\n` +
+          `1 = Math, 2 = Physics, 3 = Life Sciences, 4 = Chemistry`
+      };
+    }
+
+    // Map numbers to subject names
+    const subjectMap = {
+      1: 'math',
+      2: 'physics',
+      3: 'life_sciences',
+      4: 'chemistry'
+    };
+
+    const subjects = numbers.map((n) => subjectMap[n]);
+
+    // Generate confirmation
+    const selectedNames = numbers
+      .map((n) => {
+        const subjectKey = subjectMap[n];
+        return `${n}=${CONSTANTS.SUBJECT_DISPLAY_NAMES[subjectKey]}`;
+      })
+      .join(', ');
+
+    console.log(`✅ Subjects validated: ${subjects.join(', ')} from input: "${input}"`);
+
+    return {
+      isValid: true,
+      subjects: subjects,
+      selectedNumbers: numbers,
+      confirmation: selectedNames
+    };
+  } catch (error) {
+    console.error(`❌ Subject validation error:`, error);
+    return {
+      isValid: false,
+      error: `Something went wrong! Please try again with numbers 1-4! 🔄`
+    };
+  }
+}
+
 function generateWelcomeCompleteMessage(username, subjectsList) {
   return (
     `🎉 **REGISTRATION COMPLETE!**\n\n` +
@@ -148,4 +213,26 @@ function generateWelcomeCompleteMessage(username, subjectsList) {
 
 export function getWelcomeMessage() {
   return MESSAGES.REGISTRATION.WELCOME;
+}
+
+// ✅ NEW: Debug function for registration testing
+export function getRegistrationDebugInfo(user) {
+  const state = {
+    hasDisplayName: !!user.display_name,
+    hasUsername: !!user.username,
+    hasGrade: !!user.grade,
+    hasSubjects: !!user.preferred_subjects?.length,
+    currentMenu: user.current_menu || 'none',
+    registrationComplete: !!user.registration_completed_at
+  };
+
+  return (
+    `🐛 **REGISTRATION DEBUG:**\n` +
+    `• Display name: ${state.hasDisplayName ? '✅' : '❌'}\n` +
+    `• Username: ${state.hasUsername ? '✅' : '❌'}\n` +
+    `• Grade: ${state.hasGrade ? '✅' : '❌'}\n` +
+    `• Subjects: ${state.hasSubjects ? '✅' : '❌'}\n` +
+    `• Menu: ${state.currentMenu}\n` +
+    `• Complete: ${state.registrationComplete ? '✅' : '❌'}`
+  );
 }

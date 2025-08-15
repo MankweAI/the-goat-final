@@ -30,36 +30,5 @@ export function validateGrade(grade) {
   return { isValid: true, grade: normalized };
 }
 
-export function validateSubjects(subjectsInput) {
-  const subjects = subjectsInput
-    .toLowerCase()
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
 
-  const validSubjects = subjects.filter((s) => CONSTANTS.VALID_SUBJECTS.includes(s));
-
-  if (validSubjects.length === 0) {
-    return {
-      isValid: false,
-      error: 'Please choose from: math, physics, life sciences, chemistry',
-      example: 'Example: math, physics'
-    };
-  }
-
-  return { isValid: true, subjects: validSubjects };
-}
-
-export function validateFriendCode(friendCode) {
-  const cleaned = friendCode.trim().toUpperCase();
-
-  if (!/^GOAT[A-Z0-9]{4}$/.test(cleaned)) {
-    return {
-      isValid: false,
-      error: 'Friend code should be in format: GOAT1234'
-    };
-  }
-
-  return { isValid: true, friendCode: cleaned };
-}
 
