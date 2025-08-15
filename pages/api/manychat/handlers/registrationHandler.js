@@ -5,6 +5,9 @@ import {
 } from '../services/userService.js';
 import { validateUsername, validateGrade } from '../utils/validators.js';
 import { CONSTANTS, MESSAGES } from '../config/constants.js';
+import { questionService } from '../services/questionService.js'; // ✅ ADD THIS
+import { formatQuestion } from '../utils/questionFormatter.js'; // ✅ ADD THIS
+import { executeQuery } from '../config/database.js';
 
 export async function handleRegistration(user, message) {
   try {
@@ -152,6 +155,92 @@ async function handleGradeRegistration(user, message) {
   }
 }
 
+// ✅ NEW: Get welcome question from user's preferred subjects
+async function getWelcomeQuestion(user, preferredSubjects) {
+  try {
+    // Prioritize math if selected, otherwise pick first preferred subject
+    const primarySubject = preferredSubjects.includes('math') ? 'math' : preferredSubjects[0];
+
+    console.log(`🎯 Getting welcome question for user ${user.id}, subject: ${primarySubject}`);
+
+    // Get a suitable welcome question
+    const question = await questionService.getRandomQuestion(user, {
+      subject: primarySubject,
+      difficulty: 'easy', // Start with easy for welcome
+      excludeRecent: false // No recent questions to exclude yet
+    });
+
+    if (question) {
+      // Set this as user's current question
+      await updateUser(user.id, {
+        current_question_id: question.id,
+        current_subject: primarySubject
+      });
+
+      // Update question served time
+      await updateQuestionServedTime(question.id);
+
+      console.log(`✅ Welcome question set: ${question.id} for user ${user.id}`);
+    }
+
+    return question;
+  } catch (error) {
+    console.error(`❌ Welcome question fetch error:`, error);
+    return null;
+  }
+}
+
+// ✅ ENHANCED: Welcome message with immediate question
+async function generateWelcomeWithQuestion(username, subjectsList, question) {
+  try {
+    let welcomeMessage =
+      `🎉 **WELCOME TO THE GOAT!** 🐐\n\n` +
+      `Howzit @${username}! You're all set to dominate!\n\n` +
+      `🎯 **Your subjects:** ${subjectsList}\n\n` +
+      `Let's jump straight into action! Here's your first challenge:\n\n`;
+
+    if (question) {
+      // Add the question immediately
+      welcomeMessage += `${formatQuestion(question)}\n\n`;
+      welcomeMessage += `Just send the letter (A, B, C or D). Let's see what you've got! 🔥\n\n`;
+      welcomeMessage += `💡 **Quick tip:** After answering, you can type "menu" anytime to see all options!`;
+    } else {
+      // Fallback if no question available
+      welcomeMessage +=
+        `Eish, couldn't load your first question right now! 😅\n\n` +
+        `No stress - type "next" to get a question, or "menu" to see all options! 🚀`;
+    }
+
+    return welcomeMessage;
+  } catch (error) {
+    console.error(`❌ Welcome with question generation error:`, error);
+
+    // Safe fallback
+    return (
+      `🎉 **WELCOME TO THE GOAT!** 🐐\n\n` +
+      `Howzit @${username}! You're all set with: ${subjectsList}\n\n` +
+      `Type "next" to get your first question! 🚀`
+    );
+  }
+}
+
+// ✅ NEW: Update question served timestamp
+async function updateQuestionServedTime(questionId) {
+  try {
+    await executeQuery(async (supabase) => {
+      const { error } = await supabase
+        .from('mcqs')
+        .update({ last_served_at: new Date().toISOString() })
+        .eq('id', questionId);
+
+      if (error) throw error;
+    });
+  } catch (error) {
+    console.error(`⚠️ Question served time update failed:`, error);
+    // Non-critical error, don't throw
+  }
+}
+
 // ✅ FIXED: Removed registration_completed_at column reference
 async function handleSubjectsRegistration(user, message) {
   try {
@@ -164,10 +253,10 @@ async function handleSubjectsRegistration(user, message) {
       };
     }
 
-    // ✅ FIXED: Only update existing columns
+    // Update user with subjects and set to question-ready state
     await updateUser(user.id, {
       preferred_subjects: validation.subjects,
-      current_menu: 'main',
+      current_menu: 'question_active', // ✅ Ready for questions
       last_active_at: new Date().toISOString()
     });
 
@@ -177,8 +266,11 @@ async function handleSubjectsRegistration(user, message) {
 
     console.log(`✅ Registration completed for user ${user.id}: subjects = ${subjectsList}`);
 
+    // ✅ ENHANCED: Get immediate welcome question
+    const welcomeQuestion = await getWelcomeQuestion(user, validation.subjects);
+
     return {
-      reply: generateWelcomeCompleteMessage(user.username, subjectsList),
+      reply: await generateWelcomeWithQuestion(user.username, subjectsList, welcomeQuestion),
       shouldContinue: false
     };
   } catch (error) {
