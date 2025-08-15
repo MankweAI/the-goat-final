@@ -5,8 +5,8 @@ import {
 } from '../services/userService.js';
 import { validateUsername, validateGrade } from '../utils/validators.js';
 import { CONSTANTS, MESSAGES } from '../config/constants.js';
-import { questionService } from '../services/questionService.js'; // ✅ ADD THIS
-import { formatQuestion } from '../utils/questionFormatter.js'; // ✅ ADD THIS
+import { questionService } from '../services/questionService.js';
+import { formatQuestion } from '../utils/questionFormatter.js';
 import { executeQuery } from '../config/database.js';
 
 export async function handleRegistration(user, message) {
@@ -53,7 +53,6 @@ export async function handleRegistration(user, message) {
 
 function determineRegistrationState(user) {
   try {
-    // Check what's missing in order
     if (!user.display_name) {
       return CONSTANTS.REGISTRATION_STATES.NEEDS_USERNAME;
     }
@@ -155,93 +154,7 @@ async function handleGradeRegistration(user, message) {
   }
 }
 
-// ✅ NEW: Get welcome question from user's preferred subjects
-async function getWelcomeQuestion(user, preferredSubjects) {
-  try {
-    // Prioritize math if selected, otherwise pick first preferred subject
-    const primarySubject = preferredSubjects.includes('math') ? 'math' : preferredSubjects[0];
-
-    console.log(`🎯 Getting welcome question for user ${user.id}, subject: ${primarySubject}`);
-
-    // Get a suitable welcome question
-    const question = await questionService.getRandomQuestion(user, {
-      subject: primarySubject,
-      difficulty: 'easy', // Start with easy for welcome
-      excludeRecent: false // No recent questions to exclude yet
-    });
-
-    if (question) {
-      // Set this as user's current question
-      await updateUser(user.id, {
-        current_question_id: question.id,
-        current_subject: primarySubject
-      });
-
-      // Update question served time
-      await updateQuestionServedTime(question.id);
-
-      console.log(`✅ Welcome question set: ${question.id} for user ${user.id}`);
-    }
-
-    return question;
-  } catch (error) {
-    console.error(`❌ Welcome question fetch error:`, error);
-    return null;
-  }
-}
-
-// ✅ ENHANCED: Welcome message with immediate question
-async function generateWelcomeWithQuestion(username, subjectsList, question) {
-  try {
-    let welcomeMessage =
-      `🎉 **WELCOME TO THE GOAT!** 🐐\n\n` +
-      `Howzit @${username}! You're all set to dominate!\n\n` +
-      `🎯 **Your subjects:** ${subjectsList}\n\n` +
-      `Let's jump straight into action! Here's your first challenge:\n\n`;
-
-    if (question) {
-      // Add the question immediately
-      welcomeMessage += `${formatQuestion(question)}\n\n`;
-      welcomeMessage += `Just send the letter (A, B, C or D). Let's see what you've got! 🔥\n\n`;
-      welcomeMessage += `💡 **Quick tip:** After answering, you can type "menu" anytime to see all options!`;
-    } else {
-      // Fallback if no question available
-      welcomeMessage +=
-        `Eish, couldn't load your first question right now! 😅\n\n` +
-        `No stress - type "next" to get a question, or "menu" to see all options! 🚀`;
-    }
-
-    return welcomeMessage;
-  } catch (error) {
-    console.error(`❌ Welcome with question generation error:`, error);
-
-    // Safe fallback
-    return (
-      `🎉 **WELCOME TO THE GOAT!** 🐐\n\n` +
-      `Howzit @${username}! You're all set with: ${subjectsList}\n\n` +
-      `Type "next" to get your first question! 🚀`
-    );
-  }
-}
-
-// ✅ NEW: Update question served timestamp
-async function updateQuestionServedTime(questionId) {
-  try {
-    await executeQuery(async (supabase) => {
-      const { error } = await supabase
-        .from('mcqs')
-        .update({ last_served_at: new Date().toISOString() })
-        .eq('id', questionId);
-
-      if (error) throw error;
-    });
-  } catch (error) {
-    console.error(`⚠️ Question served time update failed:`, error);
-    // Non-critical error, don't throw
-  }
-}
-
-// ✅ FIXED: Removed registration_completed_at column reference
+// ✅ ENHANCED: Registration completion with robust question fetching
 async function handleSubjectsRegistration(user, message) {
   try {
     const validation = validateSubjectsFromNumbers(message);
@@ -256,7 +169,7 @@ async function handleSubjectsRegistration(user, message) {
     // Update user with subjects and set to question-ready state
     await updateUser(user.id, {
       preferred_subjects: validation.subjects,
-      current_menu: 'question_active', // ✅ Ready for questions
+      current_menu: 'question_active',
       last_active_at: new Date().toISOString()
     });
 
@@ -266,7 +179,7 @@ async function handleSubjectsRegistration(user, message) {
 
     console.log(`✅ Registration completed for user ${user.id}: subjects = ${subjectsList}`);
 
-    // ✅ ENHANCED: Get immediate welcome question
+    // ✅ ENHANCED: Try to get welcome question with fallback
     const welcomeQuestion = await getWelcomeQuestion(user, validation.subjects);
 
     return {
@@ -276,6 +189,182 @@ async function handleSubjectsRegistration(user, message) {
   } catch (error) {
     console.error(`❌ Subjects registration error:`, error);
     throw error;
+  }
+}
+
+// ✅ ENHANCED: Robust welcome question fetching with multiple fallbacks
+async function getWelcomeQuestion(user, preferredSubjects) {
+  try {
+    console.log(
+      `🎯 Getting welcome question for user ${user.id}, subjects: ${preferredSubjects.join(', ')}`
+    );
+
+    // Strategy 1: Try preferred subjects in order
+    for (const subject of preferredSubjects) {
+      console.log(`🔍 Trying subject: ${subject}`);
+
+      try {
+        const question = await questionService.getRandomQuestion(user, {
+          subject: subject,
+          difficulty: 'easy',
+          excludeRecent: false
+        });
+
+        if (question) {
+          console.log(`✅ Found question ${question.id} for subject ${subject}`);
+
+          // Set this as user's current question
+          await updateUser(user.id, {
+            current_question_id: question.id,
+            current_subject: subject
+          });
+
+          // Update question served time
+          await updateQuestionServedTime(question.id);
+
+          return question;
+        }
+      } catch (subjectError) {
+        console.error(`❌ Failed to get question for ${subject}:`, subjectError);
+        continue; // Try next subject
+      }
+    }
+
+    // Strategy 2: Try any subject with any difficulty
+    console.log(`🔄 No easy questions found, trying any difficulty...`);
+
+    for (const subject of preferredSubjects) {
+      try {
+        const question = await questionService.getRandomQuestion(user, {
+          subject: subject,
+          excludeRecent: false
+        });
+
+        if (question) {
+          console.log(`✅ Found backup question ${question.id} for subject ${subject}`);
+
+          await updateUser(user.id, {
+            current_question_id: question.id,
+            current_subject: subject
+          });
+
+          await updateQuestionServedTime(question.id);
+          return question;
+        }
+      } catch (subjectError) {
+        console.error(`❌ Failed to get backup question for ${subject}:`, subjectError);
+        continue;
+      }
+    }
+
+    // Strategy 3: Try any available question regardless of subject
+    console.log(`🔄 No subject-specific questions found, trying any question...`);
+
+    try {
+      const question = await getAnyAvailableQuestion(user);
+
+      if (question) {
+        console.log(`✅ Found fallback question ${question.id}`);
+
+        await updateUser(user.id, {
+          current_question_id: question.id,
+          current_subject: question.subject || preferredSubjects[0]
+        });
+
+        await updateQuestionServedTime(question.id);
+        return question;
+      }
+    } catch (fallbackError) {
+      console.error(`❌ Failed to get fallback question:`, fallbackError);
+    }
+
+    console.log(`❌ No questions available for user ${user.id}`);
+    return null;
+  } catch (error) {
+    console.error(`❌ Welcome question fetch error:`, error);
+    return null;
+  }
+}
+
+// ✅ NEW: Get any available question as ultimate fallback
+async function getAnyAvailableQuestion(user) {
+  try {
+    return await executeQuery(async (supabase) => {
+      const { data, error } = await supabase
+        .from('mcqs')
+        .select('*')
+        .eq('is_active', true)
+        .order('last_served_at', { ascending: true, nullsFirst: true })
+        .limit(1)
+        .single();
+
+      if (error) {
+        console.error(`❌ Fallback question query error:`, error);
+        return null;
+      }
+
+      return data;
+    });
+  } catch (error) {
+    console.error(`❌ getAnyAvailableQuestion error:`, error);
+    return null;
+  }
+}
+
+// ✅ ENHANCED: Welcome message with better fallback handling
+async function generateWelcomeWithQuestion(username, subjectsList, question) {
+  try {
+    let welcomeMessage =
+      `🎉 **WELCOME TO THE GOAT!** 🐐\n\n` +
+      `Howzit @${username}! You're all set to dominate!\n\n` +
+      `🎯 **Your subjects:** ${subjectsList}\n\n`;
+
+    if (question) {
+      // Success case - got a question
+      welcomeMessage += `Let's jump straight into action! Here's your first challenge:\n\n`;
+      welcomeMessage += `${formatQuestion(question)}\n\n`;
+      welcomeMessage += `Just send the letter (A, B, C or D). Let's see what you've got! 🔥\n\n`;
+      welcomeMessage += `💡 **Quick tip:** After answering, you can type "menu" anytime to see all options!`;
+
+      console.log(`✅ Welcome message with question generated for @${username}`);
+    } else {
+      // Fallback case - no question available
+      welcomeMessage += `Ready to start learning? Type "next" to get your first question!\n\n`;
+      welcomeMessage += `🎯 **Quick commands:**\n`;
+      welcomeMessage += `• "next" - Get a practice question\n`;
+      welcomeMessage += `• "menu" - See all options\n`;
+      welcomeMessage += `• "help" - Get help\n\n`;
+      welcomeMessage += `Let's dominate together! 🚀`;
+
+      console.log(`⚠️ Welcome message without question (fallback) for @${username}`);
+    }
+
+    return welcomeMessage;
+  } catch (error) {
+    console.error(`❌ Welcome message generation error:`, error);
+
+    // Ultra-safe fallback
+    return (
+      `🎉 **WELCOME TO THE GOAT!** 🐐\n\n` +
+      `Howzit @${username}! You're all set with: ${subjectsList}\n\n` +
+      `Type "next" to get your first question! 🚀`
+    );
+  }
+}
+
+async function updateQuestionServedTime(questionId) {
+  try {
+    await executeQuery(async (supabase) => {
+      const { error } = await supabase
+        .from('mcqs')
+        .update({ last_served_at: new Date().toISOString() })
+        .eq('id', questionId);
+
+      if (error) throw error;
+    });
+  } catch (error) {
+    console.error(`⚠️ Question served time update failed:`, error);
+    // Non-critical error, don't throw
   }
 }
 
@@ -314,13 +403,6 @@ function validateSubjectsFromNumbers(input) {
       4: 'chemistry'
     };
 
-    const subjectDisplayNames = {
-      math: 'Mathematics',
-      physics: 'Physics',
-      life_sciences: 'Life Sciences',
-      chemistry: 'Chemistry'
-    };
-
     const subjects = numbers.map((n) => subjectMap[n]);
 
     console.log(`✅ Subjects validated: ${subjects.join(', ')} from input: "${input}"`);
@@ -336,36 +418,6 @@ function validateSubjectsFromNumbers(input) {
       isValid: false,
       error: `Something went wrong! Please try again with numbers 1-4! 🔄`
     };
-  }
-}
-
-function generateWelcomeCompleteMessage(username, subjectsList) {
-  try {
-    const menuOptions = {
-      1: { emoji: '🎯', description: 'Get Practice Question' },
-      2: { emoji: '📚', description: 'Choose Subjects' },
-      3: { emoji: '📊', description: 'Progress Report' },
-      4: { emoji: '👥', description: 'Friends & Challenges' },
-      5: { emoji: '⚙️', description: 'Settings' }
-    };
-
-    return (
-      `🎉 **REGISTRATION COMPLETE!**\n\n` +
-      `Welcome to The GOAT, @${username}! 🐐\n\n` +
-      `🎯 **Your subjects:** ${subjectsList}\n\n` +
-      `You're all set to dominate! Here's what you can do:\n\n` +
-      `🏠 **MAIN MENU:**\n` +
-      `1️⃣ ${menuOptions[1].emoji} ${menuOptions[1].description}\n` +
-      `2️⃣ ${menuOptions[2].emoji} ${menuOptions[2].description} (Math has 8 topics!)\n` +
-      `3️⃣ ${menuOptions[3].emoji} ${menuOptions[3].description}\n` +
-      `4️⃣ ${menuOptions[4].emoji} ${menuOptions[4].description}\n` +
-      `5️⃣ ${menuOptions[5].emoji} ${menuOptions[5].description}\n\n` +
-      `💡 **Adding friends:** They can find you by searching @${username}\n\n` +
-      `Ready to start? Type the number! 🔥`
-    );
-  } catch (error) {
-    console.error(`❌ Welcome message generation error:`, error);
-    return `🎉 **REGISTRATION COMPLETE!**\n\nWelcome @${username}! 🐐\n\nType "menu" to get started! 🚀`;
   }
 }
 
