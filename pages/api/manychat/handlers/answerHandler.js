@@ -1,100 +1,172 @@
-import { executeQuery } from '../config/database.js';
-import { questionService } from '../services/questionService.js';
-import { aiService } from '../services/aiService.js';
-import { updateUserStats } from '../services/userService.js';
-import { formatStreak } from '../utils/responseFormatter.js';
-import { generatePostAnswerResponse } from './postAnswerHandler.js'; // ✅ NEW IMPORT
-
 /**
- * Updated Answer Handler with Post-Answer Integration
+ * Enhanced Answer Handler with proper error handling
  */
+
+import { updateUser } from '../services/userService.js';
+import { executeQuery } from '../config/database.js';
+
 export async function handleAnswerSubmission(user, command) {
   try {
-    console.log(`📝 Processing answer for user ${user.id}:`, {
-      answer: command.answer || command.value,
-      originalInput: command.originalInput,
-      currentQuestionId: user.current_question_id
-    });
+    console.log(`📝 Processing answer from user ${user.id}: ${command.answer}`);
 
-    // 1) Check if user has an active question
-    if (!user.current_question_id) {
-      console.log(`❌ No current question for user ${user.id}`);
-      return generateNoQuestionResponse();
-    }
+    // Get current question
+    const question = await getCurrentQuestion(user);
 
-    // 2) Fetch current question
-    const question = await getCurrentQuestion(user.current_question_id);
     if (!question) {
-      console.log(`❌ Question ${user.current_question_id} not found`);
-      await clearUserQuestion(user.id);
-      return generateExpiredQuestionResponse();
+      return `No active question to answer! Type "next" to get a fresh question! 🎯`;
     }
 
-    // 3) Extract and validate answer
-    const userAnswer = extractAnswerFromCommand(command);
-    if (!userAnswer) {
-      console.log(`❌ Invalid answer format from user ${user.id}: "${command.originalInput}"`);
-      return generateInvalidAnswerResponse(command.originalInput, question);
-    }
-
-    const correctAnswer = question.correct_choice?.toUpperCase() || 'A';
+    const userAnswer = command.answer.toUpperCase();
+    const correctAnswer = (question.correct_choice || '').toUpperCase();
     const isCorrect = userAnswer === correctAnswer;
 
-    // 4) Build updated statistics
-    const currentStreak = user.streak_count || 0;
-    const newStreak = isCorrect ? currentStreak + 1 : 0;
-    const totalQuestions = (user.total_questions_answered || 0) + 1;
-    const totalCorrect = (user.total_correct_answers || 0) + (isCorrect ? 1 : 0);
-
-    // 5) Build response payload
-    const answerResult = {
-      isCorrect,
-      userAnswer,
-      correctAnswer,
-      newStreak,
-      streakLost: currentStreak,
-      stats: {
-        totalQuestions,
-        totalCorrect,
-        accuracy: Math.round((totalCorrect / totalQuestions) * 100)
-      },
-      question
-    };
-
-    // 6) Record the answer and update user stats
-    await questionService.recordUserResponse(user.id, question.id, userAnswer, isCorrect);
-
-    await updateUserStats(user.id, {
-      isCorrect,
-      newStreak,
-      totalQuestions,
-      totalCorrect,
-      lastQuestionTopic: question.topics?.id,
-      lastQuestionSubject: question.subjects?.id
-    });
-
-    // 7) Clear the question and switch to post-answer menu
-    await clearUserQuestion(user.id, 'post_answer');
-
-    // 8) Generate post-answer response
-    const reply = await generatePostAnswerResponse(user, question, answerResult);
-
     console.log(
-      `✅ Answer processed successfully for user ${user.id}: ${isCorrect ? 'CORRECT' : 'INCORRECT'}`
+      `🔍 Answer check: user=${userAnswer}, correct=${correctAnswer}, isCorrect=${isCorrect}`
     );
-    return reply;
-  } catch (error) {
-    console.error(`💥 Answer processing error for user ${user.id}:`, error);
 
-    // Failsafe
-    if (user.current_question_id) {
-      try {
-        await clearUserQuestion(user.id, 'main');
-      } catch (clearError) {
-        console.error(`💥 Failed to clear question on error:`, clearError);
+    // Update user stats
+    const oldRate = user.correct_answer_rate || 0.5;
+    const oldStreak = user.streak_count || 0;
+
+    const { newRate, newStreak } = await updateUserStats(user.id, isCorrect, oldRate, oldStreak);
+
+    // Clear current question
+    await clearUserQuestion(user.id);
+
+    // Log weakness if incorrect
+    if (!isCorrect) {
+      const choices = parseChoices(question.choices);
+      const chosen = choices.find(
+        (c) =>
+          (c.choice && c.choice.toUpperCase() === userAnswer) ||
+          (!c.choice && userAnswer === String.fromCharCode(65 + choices.indexOf(c)))
+      );
+
+      if (chosen?.weakness_tag) {
+        await logUserWeakness(user.id, chosen.weakness_tag);
       }
     }
 
-    return generateErrorResponse();
+    // Generate feedback
+    const feedback = formatAnswerFeedback(
+      isCorrect,
+      correctAnswer,
+      newStreak,
+      isCorrect ? null : 'that concept'
+    );
+
+    console.log(`✅ Answer processed for user ${user.id}: ${isCorrect ? 'CORRECT' : 'INCORRECT'}`);
+
+    return feedback;
+  } catch (error) {
+    console.error(`❌ Answer submission error:`, error);
+
+    // Try to clear question on error
+    try {
+      await clearUserQuestion(user.id);
+    } catch (clearError) {
+      console.error(`💥 Failed to clear question on error:`, clearError);
+    }
+
+    return `Eish, something glitched while checking your answer. Type "next" for a fresh question! 🔄`;
+  }
+}
+
+// Helper function to parse choices
+function parseChoices(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// Import these functions from index.js or make them available
+async function getCurrentQuestion(user) {
+  try {
+    if (!user.current_question_id) {
+      return null;
+    }
+
+    return await executeQuery(async (supabase) => {
+      const { data, error } = await supabase
+        .from('mcqs')
+        .select('*')
+        .eq('id', user.current_question_id)
+        .single();
+
+      if (error) return null;
+      return data;
+    });
+  } catch (error) {
+    console.error(`❌ getCurrentQuestion error:`, error);
+    return null;
+  }
+}
+
+async function clearUserQuestion(userId) {
+  try {
+    await updateUser(userId, {
+      current_question_id: null,
+      last_active_at: new Date().toISOString()
+    });
+    return true;
+  } catch (error) {
+    console.error(`❌ clearUserQuestion error:`, error);
+    return false;
+  }
+}
+
+async function updateUserStats(userId, isCorrect, oldRate = 0.5, oldStreak = 0) {
+  try {
+    const newRate = (oldRate * 4 + (isCorrect ? 1 : 0)) / 5;
+    const newStreak = isCorrect ? oldStreak + 1 : 0;
+
+    await updateUser(userId, {
+      correct_answer_rate: newRate,
+      streak_count: newStreak,
+      last_active_at: new Date().toISOString()
+    });
+
+    return { newRate, newStreak };
+  } catch (error) {
+    console.error(`❌ updateUserStats error:`, error);
+    return { newRate: oldRate, newStreak: oldStreak };
+  }
+}
+
+async function logUserWeakness(userId, weaknessTag) {
+  try {
+    if (!weaknessTag) return;
+
+    await executeQuery(async (supabase) => {
+      const { error } = await supabase.from('user_weaknesses').insert({
+        user_id: userId,
+        weakness_tag: weaknessTag,
+        logged_at: new Date().toISOString()
+      });
+
+      if (error) {
+        console.error(`❌ Log weakness error:`, error);
+      }
+    });
+  } catch (error) {
+    console.error(`❌ logUserWeakness error:`, error);
+  }
+}
+
+function formatAnswerFeedback(isCorrect, correctChoice, streak, weaknessTag = null) {
+  if (isCorrect) {
+    const emoji = streak >= 5 ? '🔥🔥⚡' : streak >= 3 ? '🔥🔥' : '🔥';
+    return `💯 Howzit sharp shooter! You nailed it.\nStreak: ${streak} ${emoji}\n\nType "next" for another one.`;
+  } else {
+    let feedback = `Eish, not this time! Correct answer was ${correctChoice}.`;
+    if (weaknessTag) {
+      feedback += ` Classic slip in ${weaknessTag}. 💪`;
+    }
+    feedback += `\n\nType "next" to bounce back.`;
+    return feedback;
   }
 }

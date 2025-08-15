@@ -327,7 +327,190 @@ export default async function handler(req, res) {
 // ===============================
 // ✅ HELPER FUNCTIONS
 // ===============================
+// ✅ NEW: Get current question for user
+async function getCurrentQuestion(user) {
+  try {
+    if (!user.current_question_id) {
+      return null;
+    }
 
+    return await executeQuery(async (supabase) => {
+      const { data, error } = await supabase
+        .from('mcqs')
+        .select('*')
+        .eq('id', user.current_question_id)
+        .single();
+
+      if (error) {
+        console.error(`❌ Get current question error:`, error);
+        return null;
+      }
+
+      return data;
+    });
+  } catch (error) {
+    console.error(`❌ getCurrentQuestion error:`, error);
+    return null;
+  }
+}
+
+// ✅ NEW: Clear user's current question
+async function clearUserQuestion(userId) {
+  try {
+    await updateUser(userId, {
+      current_question_id: null,
+      last_active_at: new Date().toISOString()
+    });
+
+    console.log(`✅ Cleared current question for user ${userId}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ clearUserQuestion error:`, error);
+    return false;
+  }
+}
+
+// ✅ NEW: Generate error response (alias for existing function)
+function generateErrorResponse(message, metadata = {}) {
+  return formatErrorResponse(message, metadata);
+}
+
+// ✅ NEW: Update user stats after answer
+async function updateUserStats(userId, isCorrect, oldRate = 0.5, oldStreak = 0) {
+  try {
+    // Calculate new rate using EMA (4:1 weighting)
+    const newRate = (oldRate * 4 + (isCorrect ? 1 : 0)) / 5;
+    
+    // Update streak
+    const newStreak = isCorrect ? oldStreak + 1 : 0;
+    
+    // Update total counters
+    const updates = {
+      correct_answer_rate: newRate,
+      streak_count: newStreak,
+      total_questions_answered: (await getUserTotalQuestions(userId)) + 1,
+      total_correct_answers: (await getUserCorrectAnswers(userId)) + (isCorrect ? 1 : 0),
+      last_active_at: new Date().toISOString()
+    };
+
+    await updateUser(userId, updates);
+
+    console.log(`✅ Updated stats for user ${userId}: rate=${newRate.toFixed(3)}, streak=${newStreak}`);
+    
+    return { newRate, newStreak };
+  } catch (error) {
+    console.error(`❌ updateUserStats error:`, error);
+    return { newRate: oldRate, newStreak: isCorrect ? oldStreak + 1 : 0 };
+  }
+}
+
+// ✅ NEW: Get user's total questions answered
+async function getUserTotalQuestions(userId) {
+  try {
+    return await executeQuery(async (supabase) => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('total_questions_answered')
+        .eq('id', userId)
+        .single();
+
+      if (error) return 0;
+      return data?.total_questions_answered || 0;
+    });
+  } catch (error) {
+    return 0;
+  }
+}
+
+// ✅ NEW: Get user's correct answers count
+async function getUserCorrectAnswers(userId) {
+  try {
+    return await executeQuery(async (supabase) => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('total_correct_answers')
+        .eq('id', userId)
+        .single();
+
+      if (error) return 0;
+      return data?.total_correct_answers || 0;
+    });
+  } catch (error) {
+    return 0;
+  }
+}
+
+// ✅ NEW: Log weakness for incorrect answers
+async function logUserWeakness(userId, weaknessTag) {
+  try {
+    if (!weaknessTag) return;
+
+    await executeQuery(async (supabase) => {
+      const { error } = await supabase
+        .from('user_weaknesses')
+        .insert({
+          user_id: userId,
+          weakness_tag: weaknessTag,
+          logged_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error(`❌ Log weakness error:`, error);
+      } else {
+        console.log(`✅ Logged weakness for user ${userId}: ${weaknessTag}`);
+      }
+    });
+  } catch (error) {
+    console.error(`❌ logUserWeakness error:`, error);
+  }
+}
+
+// ✅ NEW: Format answer feedback
+function formatAnswerFeedback(isCorrect, correctChoice, streak, weaknessTag = null) {
+  try {
+    if (isCorrect) {
+      const streakEmojis = {
+        1: '🔥',
+        3: '🔥🔥',
+        5: '🔥🔥⚡',
+        10: '🔥🔥🔥',
+        15: '🔥🔥🔥🏆'
+      };
+
+      const emoji = streakEmojis[streak] || (streak >= 20 ? '🔥🔥🔥🏆' : '🔥');
+      
+      if (streak === 1) {
+        return `💯 Howzit sharp shooter! You nailed it.\nStreak: ${streak} ${emoji}\n\nType "next" for another one.`;
+      } else if (streak >= 5) {
+        return `💯 ABSOLUTELY CRUSHING IT! 🔥\nStreak: ${streak} ${emoji}\n\nYou're unstoppable! Type "next" to keep going!`;
+      } else {
+        return `💯 Nice one! You're on fire!\nStreak: ${streak} ${emoji}\n\nType "next" for another one.`;
+      }
+    } else {
+      const encouragement = [
+        'Eish, not this time! Keep pushing! 💪',
+        'Close one! Try again! 🎯',
+        'No stress! Learn and come back stronger! 📚',
+        "Every mistake is progress! Let's go! 🚀"
+      ];
+
+      const randomEncouragement = encouragement[Math.floor(Math.random() * encouragement.length)];
+      let feedback = `${randomEncouragement}\n\nCorrect answer was ${correctChoice}.`;
+      
+      if (weaknessTag) {
+        feedback += ` Classic slip in ${weaknessTag}. 💪`;
+      }
+      
+      feedback += `\n\nType "next" to bounce back.`;
+      return feedback;
+    }
+  } catch (error) {
+    console.error(`❌ formatAnswerFeedback error:`, error);
+    return isCorrect ? 
+      `Correct! Type "next" for another question! 🔥` : 
+      `Not quite! Correct answer was ${correctChoice}. Type "next" to try again! 💪`;
+  }
+}
 // ✅ NEW: Handle direct subject switches (physics, chemistry, life_sciences)
 async function handleDirectSubjectSwitch(user, subjectName) {
   try {
