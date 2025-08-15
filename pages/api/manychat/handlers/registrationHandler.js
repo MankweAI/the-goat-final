@@ -1,7 +1,7 @@
 import {
   updateUser,
   isUsernameAvailable,
-  isUserRegistrationComplete // ✅ Use existing function
+  isUserRegistrationComplete
 } from '../services/userService.js';
 import { validateUsername, validateGrade } from '../utils/validators.js';
 import { CONSTANTS, MESSAGES } from '../config/constants.js';
@@ -15,7 +15,6 @@ export async function handleRegistration(user, message) {
       preferred_subjects: !!user.preferred_subjects?.length
     });
 
-    // ✅ FIXED: Use proper registration state logic
     const registrationState = determineRegistrationState(user);
 
     console.log(`📝 Registration state: ${registrationState}`);
@@ -35,7 +34,6 @@ export async function handleRegistration(user, message) {
 
       default:
         console.error(`❌ Unknown registration state: ${registrationState} for user ${user.id}`);
-        // Don't throw - gracefully handle unknown state
         return {
           reply: `Let's get you set up! What should I call you? 🎯`,
           shouldContinue: false
@@ -50,12 +48,11 @@ export async function handleRegistration(user, message) {
   }
 }
 
-// ✅ NEW: Determine registration state based on user data
 function determineRegistrationState(user) {
   try {
     // Check what's missing in order
     if (!user.display_name) {
-      return CONSTANTS.REGISTRATION_STATES.NEEDS_USERNAME; // First step after display name
+      return CONSTANTS.REGISTRATION_STATES.NEEDS_USERNAME;
     }
 
     if (!user.username) {
@@ -73,13 +70,12 @@ function determineRegistrationState(user) {
     return CONSTANTS.REGISTRATION_STATES.COMPLETE;
   } catch (error) {
     console.error(`❌ Registration state determination error:`, error);
-    return CONSTANTS.REGISTRATION_STATES.NEEDS_USERNAME; // Safe fallback
+    return CONSTANTS.REGISTRATION_STATES.NEEDS_USERNAME;
   }
 }
 
 async function handleUsernameRegistration(user, message) {
   try {
-    // First time user - show welcome message and set display name
     if (!user.display_name) {
       await updateUser(user.id, {
         display_name: message.trim() || `User ${user.id}`,
@@ -92,7 +88,6 @@ async function handleUsernameRegistration(user, message) {
       };
     }
 
-    // User is providing username
     const validation = validateUsername(message);
 
     if (!validation.isValid) {
@@ -102,7 +97,6 @@ async function handleUsernameRegistration(user, message) {
       };
     }
 
-    // Check if username is available
     const isAvailable = await isUsernameAvailable(validation.username);
 
     if (!isAvailable) {
@@ -158,6 +152,7 @@ async function handleGradeRegistration(user, message) {
   }
 }
 
+// ✅ FIXED: Removed registration_completed_at column reference
 async function handleSubjectsRegistration(user, message) {
   try {
     const validation = validateSubjectsFromNumbers(message);
@@ -169,17 +164,18 @@ async function handleSubjectsRegistration(user, message) {
       };
     }
 
-    // Set proper menu state with error handling
+    // ✅ FIXED: Only update existing columns
     await updateUser(user.id, {
       preferred_subjects: validation.subjects,
       current_menu: 'main',
-      registration_completed_at: new Date().toISOString(),
       last_active_at: new Date().toISOString()
     });
 
     const subjectsList = validation.subjects
       .map((s) => CONSTANTS.SUBJECT_DISPLAY_NAMES[s] || s)
       .join(', ');
+
+    console.log(`✅ Registration completed for user ${user.id}: subjects = ${subjectsList}`);
 
     return {
       reply: generateWelcomeCompleteMessage(user.username, subjectsList),
@@ -191,7 +187,6 @@ async function handleSubjectsRegistration(user, message) {
   }
 }
 
-// ✅ SAFE: Local constants to avoid dependency issues
 function validateSubjectsFromNumbers(input) {
   try {
     const trimmed = input.trim();
@@ -235,20 +230,13 @@ function validateSubjectsFromNumbers(input) {
     };
 
     const subjects = numbers.map((n) => subjectMap[n]);
-    const selectedNames = numbers
-      .map((n) => {
-        const subjectKey = subjectMap[n];
-        return `${n}=${subjectDisplayNames[subjectKey]}`;
-      })
-      .join(', ');
 
     console.log(`✅ Subjects validated: ${subjects.join(', ')} from input: "${input}"`);
 
     return {
       isValid: true,
       subjects: subjects,
-      selectedNumbers: numbers,
-      confirmation: selectedNames
+      selectedNumbers: numbers
     };
   } catch (error) {
     console.error(`❌ Subject validation error:`, error);
@@ -293,7 +281,6 @@ export function getWelcomeMessage() {
   return MESSAGES.REGISTRATION.WELCOME;
 }
 
-// ✅ EXPORT: The registration state function for other modules
 export function getUserRegistrationState(user) {
   return determineRegistrationState(user);
 }
