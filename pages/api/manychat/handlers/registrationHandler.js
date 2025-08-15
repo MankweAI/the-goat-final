@@ -32,7 +32,8 @@ async function handleUsernameRegistration(user, message) {
   // First time user - show welcome message
   if (!user.display_name) {
     await updateUser(user.id, {
-      display_name: message.trim() || `User ${user.id}`
+      display_name: message.trim() || `User ${user.id}`,
+      last_active_at: new Date().toISOString()
     });
 
     return {
@@ -66,7 +67,8 @@ async function handleUsernameRegistration(user, message) {
 
   await updateUser(user.id, {
     username: validation.username,
-    friend_code: friendCode
+    friend_code: friendCode,
+    last_active_at: new Date().toISOString()
   });
 
   return {
@@ -85,7 +87,10 @@ async function handleGradeRegistration(user, message) {
     };
   }
 
-  await updateUser(user.id, { grade: validation.grade });
+  await updateUser(user.id, {
+    grade: validation.grade,
+    last_active_at: new Date().toISOString()
+  });
 
   const gradeDisplay = validation.grade === 'varsity' ? 'Varsity' : `Grade ${validation.grade}`;
 
@@ -95,6 +100,7 @@ async function handleGradeRegistration(user, message) {
   };
 }
 
+// ✅ UPDATED: Enhanced final registration step with numbered menu
 async function handleSubjectsRegistration(user, message) {
   const validation = validateSubjects(message);
 
@@ -105,21 +111,93 @@ async function handleSubjectsRegistration(user, message) {
     };
   }
 
+  // ✅ ENHANCED: Set initial menu state and complete registration
   await updateUser(user.id, {
-    preferred_subjects: validation.subjects
+    preferred_subjects: validation.subjects,
+    current_menu: 'main', // Set initial menu state
+    registration_completed_at: new Date().toISOString(),
+    last_active_at: new Date().toISOString()
   });
 
   const subjectsList = validation.subjects
     .map((s) => CONSTANTS.SUBJECT_DISPLAY_NAMES[s] || s)
     .join(', ');
 
+  // ✅ ENHANCED: Updated welcome message with numbered menu system
   return {
-    reply: `Lekker! Ready to dominate ${subjectsList}! 💪\n\nYou're all set! Here's what you can do:\n\n🎯 Type "next" for a question\n👥 Type "add friend [code]" to connect\n📊 Type "report" for your stats\n🔄 Type "switch to [subject]" anytime\n💬 Type "help" for more commands\n\nLet's get started! Type "next" for your first question 🔥`,
+    reply: generateWelcomeCompleteMessage(user.username, subjectsList),
     shouldContinue: false
   };
 }
 
-export function getWelcomeMessage() {
-  return MESSAGES.REGISTRATION.WELCOME;
+// ✅ NEW: Generate enhanced welcome completion message
+function generateWelcomeCompleteMessage(username, subjectsList) {
+  return (
+    `🎉 **REGISTRATION COMPLETE!**\n\n` +
+    `Welcome to The GOAT, @${username}! 🐐\n\n` +
+    `🎯 **Your subjects:** ${subjectsList}\n\n` +
+    `You're all set to dominate! Here's what you can do:\n\n` +
+    `🏠 **MAIN MENU:**\n` +
+    `1️⃣ Get practice question\n` +
+    `2️⃣ Choose subjects (Math has 8 topics!)\n` +
+    `3️⃣ See your progress\n` +
+    `4️⃣ Friends & challenges\n` +
+    `5️⃣ Settings\n\n` +
+    `⚡ **Quick tip:** Math has sub-topics like Algebra, Trigonometry, Calculus, and more!\n\n` +
+    `Ready to start? Type the number! 🔥`
+  );
 }
 
+// ✅ ENHANCED: Updated welcome message for consistency
+export function getWelcomeMessage() {
+  return (
+    `🎉 **WELCOME TO THE GOAT!** 🐐\n\n` +
+    `The ultimate South African learning bot that'll make you sharp at maths, science, and more!\n\n` +
+    `🔥 **What makes us special:**\n` +
+    `• Adaptive questions that match your level\n` +
+    `• Track your progress and streaks\n` +
+    `• Challenge friends and climb leaderboards\n` +
+    `• Master topics step-by-step\n\n` +
+    `Let's get you set up! First, what should I call you?\n\n` +
+    `💡 **Examples:** Alex, Sarah, Thabo, or your real name\n\n` +
+    `Type your name to continue! ✨`
+  );
+}
+
+// ✅ NEW: Quick registration status check for debugging
+export function getRegistrationDebugInfo(user) {
+  const state = {
+    hasDisplayName: !!user.display_name,
+    hasUsername: !!user.username,
+    hasGrade: !!user.grade,
+    hasSubjects: !!user.preferred_subjects?.length,
+    currentMenu: user.current_menu || 'none',
+    registrationComplete: !!user.registration_completed_at
+  };
+
+  return (
+    `🐛 **REGISTRATION DEBUG:**\n` +
+    `• Display name: ${state.hasDisplayName ? '✅' : '❌'}\n` +
+    `• Username: ${state.hasUsername ? '✅' : '❌'}\n` +
+    `• Grade: ${state.hasGrade ? '✅' : '❌'}\n` +
+    `• Subjects: ${state.hasSubjects ? '✅' : '❌'}\n` +
+    `• Menu: ${state.currentMenu}\n` +
+    `• Complete: ${state.registrationComplete ? '✅' : '❌'}`
+  );
+}
+
+// ✅ NEW: Helper to transition from registration to main flow
+export async function completeRegistrationTransition(user) {
+  try {
+    await updateUser(user.id, {
+      current_menu: 'main',
+      last_active_at: new Date().toISOString()
+    });
+
+    console.log(`✅ Registration transition complete for user ${user.id}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Registration transition failed for user ${user.id}:`, error);
+    return false;
+  }
+}
