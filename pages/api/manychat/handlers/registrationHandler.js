@@ -128,6 +128,7 @@ async function handleSubjectsRegistration(user, message) {
 }
 
 // ✅ NEW: Validate subjects from numbered input
+// ✅ FIX: Define subject display names locally to avoid CONSTANTS dependency
 function validateSubjectsFromNumbers(input) {
   try {
     const trimmed = input.trim();
@@ -167,13 +168,21 @@ function validateSubjectsFromNumbers(input) {
       4: 'chemistry'
     };
 
+    // ✅ FIX: Define display names locally instead of using CONSTANTS
+    const subjectDisplayNames = {
+      'math': 'Mathematics',
+      'physics': 'Physics',
+      'life_sciences': 'Life Sciences',
+      'chemistry': 'Chemistry'
+    };
+
     const subjects = numbers.map((n) => subjectMap[n]);
 
-    // Generate confirmation
+    // ✅ FIX: Use local display names
     const selectedNames = numbers
       .map((n) => {
         const subjectKey = subjectMap[n];
-        return `${n}=${CONSTANTS.SUBJECT_DISPLAY_NAMES[subjectKey]}`;
+        return `${n}=${subjectDisplayNames[subjectKey]}`;
       })
       .join(', ');
 
@@ -193,7 +202,6 @@ function validateSubjectsFromNumbers(input) {
     };
   }
 }
-
 function generateWelcomeCompleteMessage(username, subjectsList) {
   return (
     `🎉 **REGISTRATION COMPLETE!**\n\n` +
