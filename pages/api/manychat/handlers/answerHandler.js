@@ -1,19 +1,21 @@
 /**
- * Fixed Answer Handler - Proper Menu State Management
- * Date: 2025-08-15 15:55:54 UTC
+ * Enhanced Answer Handler with Post-Answer Menu
+ * Date: 2025-08-15 18:30:00 UTC
+ * This version provides feedback and a clear, numbered menu for the user's next action.
  */
 
 import { updateUser } from '../services/userService.js';
 import { executeQuery } from '../config/database.js';
+import { formatStreak, formatTopicName } from '../utils/responseFormatter.js';
 
 export async function handleAnswerSubmission(user, command) {
   try {
     console.log(`📝 Processing answer from user ${user.id}: ${command.answer}`);
 
-    // Get current question
     const question = await getCurrentQuestion(user);
 
     if (!question) {
+      // This state should ideally not be reached if the parser is correct.
       return `No active question to answer! Type "next" to get a fresh question! 🎯`;
     }
 
@@ -25,145 +27,115 @@ export async function handleAnswerSubmission(user, command) {
       `🔍 Answer check: user=${userAnswer}, correct=${correctAnswer}, isCorrect=${isCorrect}`
     );
 
-    // Update user stats
-    const oldRate = user.correct_answer_rate || 0.5;
-    const oldStreak = user.streak_count || 0;
+    // Prepare all user updates in one object for a single DB call
+    const { userUpdates, weaknessTag } = prepareUserUpdates(user, question, isCorrect, userAnswer);
 
-    const { newRate, newStreak } = await updateUserStats(user.id, isCorrect, oldRate, oldStreak);
+    // Execute updates
+    await Promise.all([
+      updateUser(user.id, userUpdates),
+      logUserWeakness(user.id, question, weaknessTag)
+    ]);
 
-    // ✅ CRITICAL FIX: Clear question AND set proper menu state
-    await updateUser(user.id, {
-      current_question_id: null,
-      current_menu: null, // ✅ CLEAR MENU STATE - allows global commands
-      last_active_at: new Date().toISOString()
-    });
-
-    // Log weakness if incorrect
-    if (!isCorrect) {
-      const choices = parseChoices(question.choices);
-      const chosen = choices.find(
-        (c) =>
-          (c.choice && c.choice.toUpperCase() === userAnswer) ||
-          (!c.choice && userAnswer === String.fromCharCode(65 + choices.indexOf(c)))
-      );
-
-      if (chosen?.weakness_tag) {
-        await logUserWeakness(user.id, chosen.weakness_tag);
-      }
-    }
-
-    // Generate feedback
+    // Generate feedback message
     const feedback = formatAnswerFeedback(
       isCorrect,
       correctAnswer,
-      newStreak,
-      isCorrect ? null : 'that concept'
+      userUpdates.streak_count,
+      weaknessTag
     );
 
-    console.log(
-      `✅ Answer processed for user ${user.id}: ${isCorrect ? 'CORRECT' : 'INCORRECT'}, menu state cleared`
-    );
+    // *** FIX A: Append the numbered post-answer menu to the feedback ***
+    const postAnswerMenu =
+      `\n\n**What's next?**\n\n` +
+      `1️⃣ Next Question\n` +
+      `2️⃣ Challenge a Friend\n` +
+      `3️⃣ Main Menu`;
 
-    return feedback;
+    console.log(`✅ Answer processed for user ${user.id}: ${isCorrect ? 'CORRECT' : 'INCORRECT'}`);
+
+    return feedback + postAnswerMenu;
   } catch (error) {
     console.error(`❌ Answer submission error:`, error);
-
-    // Try to clear question AND menu state on error
-    try {
-      await updateUser(user.id, {
-        current_question_id: null,
-        current_menu: null, // ✅ CLEAR MENU STATE ON ERROR TOO
-        last_active_at: new Date().toISOString()
-      });
-    } catch (clearError) {
-      console.error(`💥 Failed to clear question on error:`, clearError);
-    }
-
+    await updateUser(user.id, { current_question_id: null, current_menu: 'main' }); // Reset state on error
     return `Eish, something glitched while checking your answer. Type "next" for a fresh question! 🔄`;
   }
 }
 
-// Helper functions remain the same...
-function parseChoices(raw) {
-  if (!raw) return [];
-  try {
-    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+// ===============================
+// HELPER FUNCTIONS
+// ===============================
+
+function prepareUserUpdates(user, question, isCorrect, userAnswer) {
+  const oldStreak = user.streak_count || 0;
+  const totalQuestions = (user.total_questions_answered || 0) + 1;
+  const correctAnswers = (user.total_correct_answers || 0) + (isCorrect ? 1 : 0);
+
+  // *** FIX A: Set the user's menu state to 'post_answer' ***
+  // This tells the commandParser to expect a 1, 2, or 3 on the next message.
+  const userUpdates = {
+    current_question_id: null,
+    current_menu: 'post_answer',
+    streak_count: isCorrect ? oldStreak + 1 : 0,
+    total_questions_answered: totalQuestions,
+    total_correct_answers: correctAnswers,
+    correct_answer_rate: correctAnswers / totalQuestions,
+    last_active_at: new Date().toISOString()
+  };
+
+  let weaknessTag = null;
+  if (!isCorrect && question.choices && question.choices[userAnswer]) {
+    weaknessTag = question.choices[userAnswer].weakness_tag;
   }
+
+  return { userUpdates, weaknessTag };
 }
 
 async function getCurrentQuestion(user) {
-  try {
-    if (!user.current_question_id) {
+  if (!user.current_question_id) return null;
+  return executeQuery(async (supabase) => {
+    const { data, error } = await supabase
+      .from('mcqs')
+      .select('*')
+      .eq('id', user.current_question_id)
+      .single();
+    if (error) {
+      console.error(`Error fetching question ${user.current_question_id}:`, error);
       return null;
     }
-
-    return await executeQuery(async (supabase) => {
-      const { data, error } = await supabase
-        .from('mcqs')
-        .select('*')
-        .eq('id', user.current_question_id)
-        .single();
-
-      if (error) return null;
-      return data;
-    });
-  } catch (error) {
-    console.error(`❌ getCurrentQuestion error:`, error);
-    return null;
-  }
+    return data;
+  });
 }
 
-async function updateUserStats(userId, isCorrect, oldRate = 0.5, oldStreak = 0) {
+async function logUserWeakness(userId, question, weaknessTag) {
+  if (!weaknessTag || weaknessTag === 'none') return;
   try {
-    const newRate = (oldRate * 4 + (isCorrect ? 1 : 0)) / 5;
-    const newStreak = isCorrect ? oldStreak + 1 : 0;
-
-    await updateUser(userId, {
-      correct_answer_rate: newRate,
-      streak_count: newStreak,
-      last_active_at: new Date().toISOString()
-    });
-
-    return { newRate, newStreak };
-  } catch (error) {
-    console.error(`❌ updateUserStats error:`, error);
-    return { newRate: oldRate, newStreak: oldStreak };
-  }
-}
-
-async function logUserWeakness(userId, weaknessTag) {
-  try {
-    if (!weaknessTag) return;
-
     await executeQuery(async (supabase) => {
       const { error } = await supabase.from('user_weaknesses').insert({
         user_id: userId,
+        mcq_id: question.id,
         weakness_tag: weaknessTag,
         logged_at: new Date().toISOString()
       });
-
-      if (error) {
-        console.error(`❌ Log weakness error:`, error);
-      }
+      if (error) console.error(`❌ DB error logging weakness:`, error);
     });
   } catch (error) {
-    console.error(`❌ logUserWeakness error:`, error);
+    console.error(`❌ Top-level error in logUserWeakness:`, error);
   }
 }
 
 function formatAnswerFeedback(isCorrect, correctChoice, streak, weaknessTag = null) {
   if (isCorrect) {
-    const emoji = streak >= 5 ? '🔥🔥⚡' : streak >= 3 ? '🔥🔥' : '🔥';
-    return `💯 Howzit sharp shooter! You nailed it.\nStreak: ${streak} ${emoji}\n\nType "next" for another one.`;
-  } else {
-    let feedback = `Eish, not this time! Correct answer was ${correctChoice}.`;
-    if (weaknessTag) {
-      feedback += ` Classic slip in ${weaknessTag}. 💪`;
+    const emoji = formatStreak(streak);
+    let message = `💯 Sharp shooter! You nailed it! ${emoji}`;
+    if (streak > 1) {
+      message += `\nThat's a **${streak}-question streak**!`;
     }
-    feedback += `\n\nType "next" to bounce back.`;
+    return message;
+  } else {
+    let feedback = `Aweh, not this time. The correct answer was **${correctChoice}**.`;
+    if (weaknessTag) {
+      feedback += `\n\nThat's a classic slip-up with **${formatTopicName(weaknessTag)}**. Keep an eye on that! 💪`;
+    }
     return feedback;
   }
 }
