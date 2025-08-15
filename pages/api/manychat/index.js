@@ -1,8 +1,9 @@
 /**
- * The GOAT - Complete ManyChat Webhook Handler (CORRECTED)
+ * The GOAT - Complete ManyChat Webhook Handler (FULLY CORRECTED)
  *
  * Architecture: ManyChat (External Request) -> This API Route -> Supabase
- * Update: Fixed imports, function calls, and parameter passing
+ * Update: Fixed all imports, function calls, subject handling, and parameter passing
+ * Date: 2025-08-15 12:35:36 UTC
  */
 
 // ========== CORRECTED IMPORTS ==========
@@ -24,9 +25,10 @@ import { friendsService } from './services/friendsService.js';
 import { hookService } from './services/hookService.js';
 import { handleRegistration, getWelcomeMessage } from './handlers/registrationHandler.js';
 import { handleQuestionRequest } from './handlers/questionHandler.js';
-import { handleAnswerSubmission } from './handlers/answerHandler.js'; // ✅ DIRECT IMPORT
+import { handleAnswerSubmission } from './handlers/answerHandler.js';
 import { parseCommand } from './utils/commandParser.js';
 import { formatResponse, formatErrorResponse } from './utils/responseFormatter.js';
+import { formatQuestion } from './utils/questionFormatter.js';
 import { aiService } from './services/aiService.js';
 import { CONSTANTS } from './config/constants.js';
 import { handlePostAnswerAction } from './handlers/postAnswerHandler.js';
@@ -36,8 +38,10 @@ export default async function handler(req, res) {
   const start = Date.now();
 
   // 🚨 DEPLOYMENT VERIFICATION
-  console.log('🚀 ENHANCED CODE ACTIVE - 2025-08-15 11:05:47');
-  console.log('✅ Features: Answer validation, Sub-topics, Post-answer experience');
+  console.log('🚀 ENHANCED CODE ACTIVE - 2025-08-15 12:35:36');
+  console.log(
+    '✅ Features: Answer validation, Sub-topics, Post-answer experience, Fixed subject handling'
+  );
 
   // Only accept POST requests
   if (req.method !== 'POST') {
@@ -97,9 +101,11 @@ export default async function handler(req, res) {
       type: command.type,
       action: command.action,
       answer: command.answer,
+      target: command.target,
       topicNumber: command.topicNumber,
       actionNumber: command.actionNumber,
-      menu: user.current_menu
+      menu: user.current_menu,
+      originalInput: command.originalInput
     });
 
     // PRIORITY 1: HANDLE INVALID ANSWERS
@@ -190,20 +196,37 @@ export default async function handler(req, res) {
         break;
 
       case CONSTANTS.COMMAND_TYPES.ANSWER:
-        // ✅ FIXED: Direct call to handleAnswerSubmission with proper parameters
         console.log(`📝 Processing answer submission:`, command);
         reply = await handleAnswerSubmission(user, command);
         break;
 
+      // ✅ FIXED: Handle all subject switches properly
       case CONSTANTS.COMMAND_TYPES.SUBJECT_SWITCH:
         console.log(`🔄 Subject switch to: ${command.target}`);
-        reply = await handleSubjectSwitchCommand(user, command);
+
+        // Special handling for math (goes to sub-topic menu)
+        if (command.target === 'math' || command.target === 'mathematics') {
+          reply = await handleSubjectSwitchCommand(user, command); // This shows math topics menu
+        } else {
+          // Direct switch for other subjects
+          reply = await handleDirectSubjectSwitch(user, command.target);
+        }
         break;
 
-      // ✅ ENHANCED: Math topic selection
+      // ✅ ENHANCED: Math topic selection (numbers 1-9)
       case 'math_topic_select':
         console.log(`🧮 Math topic selection: ${command.topicNumber}`);
-        reply = await handleMathTopicSelection(user, command.topicNumber);
+
+        // Ensure topicNumber is a valid number
+        if (
+          typeof command.topicNumber === 'number' &&
+          command.topicNumber >= 1 &&
+          command.topicNumber <= 9
+        ) {
+          reply = await handleMathTopicSelection(user, command.topicNumber);
+        } else {
+          reply = `Invalid math topic choice! Pick a number 1-9 from the math topics menu! 🧮`;
+        }
         break;
 
       case CONSTANTS.COMMAND_TYPES.REPORT:
@@ -217,7 +240,17 @@ export default async function handler(req, res) {
       // ✅ ENHANCED: Post-answer action handler
       case 'post_answer_action':
         console.log(`🎯 Post-answer action: ${command.actionNumber}`);
-        reply = await handlePostAnswerAction(user, command.actionNumber);
+
+        // Ensure actionNumber is valid
+        if (
+          typeof command.actionNumber === 'number' &&
+          command.actionNumber >= 1 &&
+          command.actionNumber <= 5
+        ) {
+          reply = await handlePostAnswerAction(user, command.actionNumber);
+        } else {
+          reply = `Invalid action choice! Pick a number 1-5 from the menu above! 🎯`;
+        }
         break;
 
       // ✅ ENHANCED: Invalid option handler with context
@@ -225,13 +258,28 @@ export default async function handler(req, res) {
         reply = handleInvalidOption(command.menu, command.attempted, command.validRange);
         break;
 
+      // ✅ NEW: Handle direct text commands that should be numbers
+      case 'invalid_text_command':
+        reply = handleInvalidTextCommand(command.originalInput, user.current_menu);
+        break;
+
       case CONSTANTS.COMMAND_TYPES.HELP:
         reply = generateHelpMessage(user);
         break;
 
       default:
-        console.log(`⚠️ Unhandled command type: ${command.type}`);
-        reply = await menuHandler.showMainMenu(user);
+        console.log(
+          `⚠️ Unhandled command type: ${command.type}, input: "${command.originalInput || message}"`
+        );
+
+        // Better default handling based on context
+        if (user.current_question_id) {
+          reply = `To answer the question, send A, B, C, or D! 🎯`;
+        } else if (user.current_menu && user.current_menu !== 'main') {
+          reply = `Invalid choice! Use the numbered options from the menu above! 🔢\n\nNeed help? Type "menu" to start fresh! 🏠`;
+        } else {
+          reply = await menuHandler.showMainMenu(user);
+        }
     }
 
     // ✅ ENHANCED: Better logging
@@ -250,6 +298,7 @@ export default async function handler(req, res) {
         command_type: command.type,
         command_details: {
           action: command.action,
+          target: command.target,
           menu: user.current_menu,
           has_question: !!user.current_question_id
         },
@@ -276,8 +325,114 @@ export default async function handler(req, res) {
 }
 
 // ===============================
-// ✅ CORRECTED HELPER FUNCTIONS
+// ✅ HELPER FUNCTIONS
 // ===============================
+
+// ✅ NEW: Handle direct subject switches (physics, chemistry, life_sciences)
+async function handleDirectSubjectSwitch(user, subjectName) {
+  try {
+    const subjectMap = {
+      physics: { display: 'Physics', emoji: '⚡' },
+      life_sciences: { display: 'Life Sciences', emoji: '🧬' },
+      chemistry: { display: 'Chemistry', emoji: '⚗️' },
+      english: { display: 'English', emoji: '📖' },
+      geography: { display: 'Geography', emoji: '🌍' },
+      history: { display: 'History', emoji: '📜' }
+    };
+
+    const subject = subjectMap[subjectName];
+    if (!subject) {
+      return `Unknown subject: ${subjectName}. Please use the numbered subject menu! 📚\n\nType "2" from main menu to choose subjects properly! 🎯`;
+    }
+
+    // Update user's subject
+    await updateUser(user.id, {
+      current_subject: subjectName,
+      current_topic: null, // Clear specific topic
+      current_menu: 'question_active',
+      last_active_at: new Date().toISOString()
+    });
+
+    // Get question for this subject
+    const question = await questionService.getRandomQuestion(user, {
+      subject: subjectName,
+      difficulty: calculateUserDifficulty(user),
+      excludeRecent: true
+    });
+
+    if (!question) {
+      return `No ${subject.display} questions available right now! 😅\n\nTry another subject or type "menu"! 🔄`;
+    }
+
+    // Set current question
+    await updateUser(user.id, {
+      current_question_id: question.id
+    });
+
+    await updateQuestionServedTime(question.id);
+
+    // Format response
+    let response = `${subject.emoji} **${subject.display.toUpperCase()}** ACTIVATED!\n\n`;
+    response += `Ready to master ${subject.display}? Let's go! 💪\n\n`;
+    response += `${formatQuestion(question)}\n\n`;
+    response += `Just send the letter (A, B, C or D). Sharp? 🎯`;
+
+    console.log(
+      `✅ Switched to ${subject.display}, served question ${question.id} to user ${user.id}`
+    );
+    return response;
+  } catch (error) {
+    console.error(`❌ Direct subject switch error:`, error);
+    return `Eish, couldn't switch to that subject. Type "menu" to try again! 🔄`;
+  }
+}
+
+// ✅ NEW: Handle invalid text commands with helpful guidance
+function handleInvalidTextCommand(input, currentMenu) {
+  const menuGuidance = {
+    main: 'From main menu, type 1-5 for your choice! 🏠',
+    subject: 'From subject menu, type 1-5 to choose! 📚',
+    math_topics: 'From math topics, type 1-9 for your choice! 🧮',
+    friends: 'From friends menu, type 1-4 for your choice! 👥',
+    settings: 'From settings, type 1-3 for your choice! ⚙️',
+    post_answer: 'Choose your next action with 1-5! 🎯'
+  };
+
+  const guidance = menuGuidance[currentMenu] || 'Use numbered choices from the menu! 🔢';
+
+  return (
+    `You typed: "${input}"\n\n` +
+    `💡 **Tip:** Use numbers instead of text!\n\n` +
+    `${guidance}\n\n` +
+    `Example: Type "2" not "subjects" 🎯`
+  );
+}
+
+// ✅ NEW: Calculate user difficulty
+function calculateUserDifficulty(user) {
+  const rate = user.correct_answer_rate || 0.5;
+
+  if (rate >= 0.8) return 'hard';
+  if (rate >= 0.5) return 'medium';
+  return 'easy';
+}
+
+// ✅ NEW: Update question served timestamp
+async function updateQuestionServedTime(questionId) {
+  try {
+    await executeQuery(async (supabase) => {
+      const { error } = await supabase
+        .from('mcqs')
+        .update({ last_served_at: new Date().toISOString() })
+        .eq('id', questionId);
+
+      if (error) throw error;
+    });
+  } catch (error) {
+    console.error(`⚠️ Question served time update failed:`, error);
+    // Non-critical error, don't throw
+  }
+}
 
 async function handleQuestionCommand(user, command) {
   try {
