@@ -1,47 +1,28 @@
 /**
- * The GOAT - Complete ManyChat Webhook Handler (UPDATED for Panic + Therapy MVP)
- * Date: 2025-08-16 14:24:55 UTC
+ * The GOAT - Main Webhook Handler (Stress & Confidence Focus)
+ * Date: 2025-08-16 17:03:51 UTC
+ * Complete rewrite for proactive educational platform
  */
 
-import { executeQuery } from './config/database.js';
-import { questionService } from './services/questionService.js';
-import {
-  findOrCreateUser,
-  isUserRegistrationComplete,
-  updateUserActivity,
-  updateUser
-} from './services/userService.js';
-import {
-  handleSubjectSwitchCommand,
-  handleMathTopicSelection,
-  handleInvalidTopicSelection
-} from './handlers/subjectHandler.js';
-import { menuHandler } from './handlers/menuHandler.js';
-import { friendsService } from './services/friendsService.js';
-import { hookService } from './services/hookService.js';
-import { handleRegistration, getWelcomeMessage } from './handlers/registrationHandler.js';
-import { handleQuestionRequest } from './handlers/questionHandler.js';
-import { handleAnswerSubmission } from './handlers/answerHandler.js';
+import { findOrCreateUser, updateUserActivity, updateUser } from './services/userService.js';
 import { parseCommand } from './utils/commandParser.js';
 import { formatResponse, formatErrorResponse } from './utils/responseFormatter.js';
-import { formatQuestion } from './utils/questionFormatter.js';
-import { aiService } from './services/aiService.js';
-import { CONSTANTS } from './config/constants.js';
-import { handlePostAnswerAction } from './handlers/postAnswerHandler.js';
+import { CONSTANTS, MESSAGES } from './config/constants.js';
 
-// NEW: Panic/Therapy handlers
-import { panicHandler } from './handlers/panicHandler.js';
-import { therapyHandler } from './handlers/therapyHandler.js';
+// Import new handlers
+import { stressHandler } from './handlers/stressHandler.js';
+import { confidenceHandler } from './handlers/confidenceHandler.js';
+import { practiceHandler } from './handlers/practiceHandler.js';
 
 export default async function handler(req, res) {
   const start = Date.now();
 
-  console.log('🚀 ENHANCED CODE ACTIVE - 2025-08-16 14:24:55');
-  console.log('✅ Features: Panic + Therapy MVP');
+  console.log('🚀 THE GOAT v2.0 - STRESS & CONFIDENCE PLATFORM ACTIVE');
+  console.log('✅ Features: Zero friction, Proactive support, Gentle guidance');
 
   if (req.method !== 'POST') {
     return res.status(405).json(
-      formatErrorResponse('Method not allowed. Only POST requests are supported.', {
+      formatErrorResponse('Only POST requests supported', {
         allowed: ['POST'],
         elapsed_ms: Date.now() - start
       })
@@ -53,267 +34,161 @@ export default async function handler(req, res) {
 
   if (!subscriberId || !message) {
     return res.status(400).json(
-      formatErrorResponse('Missing required fields: subscriber_id and message', {
+      formatErrorResponse('Missing subscriber_id or message', {
         subscriber_id: subscriberId,
         elapsed_ms: Date.now() - start
       })
     );
-  }
-
-  if (!/^\d+$/.test(String(subscriberId))) {
-    console.warn(`⚠️ Non-numeric subscriberId: ${subscriberId}`);
   }
 
   if (message.length > 1000) {
     return res.status(400).json(
-      formatErrorResponse('Message too long. Maximum 1000 characters allowed.', {
+      formatErrorResponse('Message too long (max 1000 characters)', {
         subscriber_id: subscriberId,
         elapsed_ms: Date.now() - start
       })
     );
   }
 
-  console.log(`📥 Webhook request from ${subscriberId}: "${message}"`);
+  console.log(`📥 Message from ${subscriberId}: "${message.substring(0, 100)}"`);
 
   try {
+    // Find or create user (PSID-only, no registration barriers)
     const user = await findOrCreateUser(subscriberId);
     if (!user) {
       throw new Error('Failed to find or create user');
     }
 
     console.log(
-      `👤 User ${user.id} (${user.username || 'unregistered'}) - Menu: ${user.current_menu}`
+      `👤 User ${user.id} | Menu: ${user.current_menu} | Grade: ${user.grade || 'unknown'}`
     );
 
     await updateUserActivity(user.id);
 
-    const isRegistered = await isUserRegistrationComplete(user);
-
+    // Parse command with current context
     const command = parseCommand(message, {
       current_menu: user.current_menu,
-      expecting_username: user.expecting_input === 'username_for_friend',
-      expecting_challenge_username: user.expecting_input === 'username_for_challenge',
-      expecting_registration_input: !isRegistered && user.display_name,
       has_current_question: !!user.current_question_id,
-      expecting_answer: !!user.current_question_id
+      expecting_answer: !!user.current_question_id,
+      expecting_registration_input: false // No registration barriers
     });
 
-    console.log(`🎯 Command parsed:`, {
-      type: command.type,
+    console.log(`🎯 Command parsed: ${command.type}`, {
       action: command.action,
-      answer: command.answer,
-      target: command.target,
-      topicNumber: command.topicNumber,
-      actionNumber: command.actionNumber,
-      menu: user.current_menu,
-      originalInput: command.originalInput
+      choice: command.choice,
+      originalInput: command.originalInput?.substring(0, 50)
     });
-
-    if (command.type === 'invalid_answer') {
-      console.log(`❌ Invalid answer attempt: "${message}"`);
-      return res.status(200).json(
-        formatResponse(command.error, {
-          subscriber_id: subscriberId,
-          elapsed_ms: Date.now() - start,
-          command_type: command.type,
-          error: 'invalid_answer_format'
-        })
-      );
-    }
-
-    if (command.type === 'manual_hook') {
-      const reply = await handleManualHook(user, command);
-      return res.status(200).json(
-        formatResponse(reply, {
-          subscriber_id: subscriberId,
-          elapsed_ms: Date.now() - start,
-          command_type: command.type
-        })
-      );
-    }
-
-    if (command.type === 'hook_stats') {
-      const reply = await handleHookStats(user);
-      return res.status(200).json(
-        formatResponse(reply, {
-          subscriber_id: subscriberId,
-          elapsed_ms: Date.now() - start,
-          command_type: command.type
-        })
-      );
-    }
-
-    if (!isRegistered) {
-      console.log(`📝 User ${user.id} needs registration`);
-
-      if (!user.display_name && message.toLowerCase().trim() === 'hi') {
-        const reply = getWelcomeMessage();
-        return res.status(200).json(
-          formatResponse(reply, {
-            subscriber_id: subscriberId,
-            elapsed_ms: Date.now() - start,
-            registration_required: true
-          })
-        );
-      }
-
-      const registrationResult = await handleRegistration(user, message);
-      if (registrationResult) {
-        return res.status(200).json(
-          formatResponse(registrationResult.reply, {
-            subscriber_id: subscriberId,
-            elapsed_ms: Date.now() - start,
-            registration_step: true
-          })
-        );
-      }
-    }
 
     let reply = '';
 
-    // Panic/Therapy answer interception BEFORE generic answer flow
-    if (command.type === CONSTANTS.COMMAND_TYPES.ANSWER) {
-      if (user.current_menu === 'panic') {
-        reply = await panicHandler.handleAnswer(user, command.answer);
-        return res.status(200).json(
-          formatResponse(reply, {
-            subscriber_id: subscriberId,
-            elapsed_ms: Date.now() - start,
-            command_type: 'panic_answer'
-          })
-        );
-      }
-      if (user.current_menu === 'therapy') {
-        reply = await therapyHandler.handleAnswer(user, command.answer);
-        return res.status(200).json(
-          formatResponse(reply, {
-            subscriber_id: subscriberId,
-            elapsed_ms: Date.now() - start,
-            command_type: 'therapy_answer'
-          })
-        );
-      }
-    }
-
-    // Standard switch
+    // Route to appropriate handlers
     switch (command.type) {
-      case 'main_menu':
-        reply = await menuHandler.showMainMenu(user);
+      // ===== CORE FLOWS =====
+
+      case 'welcome_menu':
+      case 'unrecognized':
+        reply = await showWelcomeMenu(user);
         break;
 
-      case 'subject_menu':
-        reply = await menuHandler.showSubjectMenu(user);
+      case CONSTANTS.COMMAND_TYPES.STRESSED:
+        if (command.action === 'start') {
+          reply = await stressHandler.startStressSupport(user);
+        }
         break;
 
-      case 'friends_menu':
-        reply = await menuHandler.showFriendsMenu(user);
+      case CONSTANTS.COMMAND_TYPES.CONFIDENCE_BOOST:
+        if (command.action === 'start') {
+          reply = await confidenceHandler.startConfidenceBoost(user);
+        }
         break;
 
-      case 'settings_menu':
-        reply = await menuHandler.showSettingsMenu(user);
+      case CONSTANTS.COMMAND_TYPES.PRACTICE:
+        if (command.action === 'start') {
+          reply = await practiceHandler.startPractice(user);
+        }
         break;
 
-      case CONSTANTS.COMMAND_TYPES.QUESTION:
-        reply = await handleQuestionCommand(user, command);
+      // ===== MENU NAVIGATION =====
+
+      case 'stress_level_select':
+        reply = await stressHandler.handleStressMenu(user, command.level);
         break;
+
+      case 'stress_subject_select':
+        reply = await stressHandler.handleStressMenu(user, command.menuChoice);
+        break;
+
+      case 'confidence_reason_select':
+        reply = await confidenceHandler.handleConfidenceMenu(user, command.menuChoice);
+        break;
+
+      case 'confidence_ladder_select':
+        reply = await confidenceHandler.handleConfidenceMenu(user, command.menuChoice);
+        break;
+
+      case 'lesson_action':
+        reply = await stressHandler.handleLessonAction(user, command.action);
+        break;
+
+      case 'practice_continue_select':
+        if (user.current_menu === 'practice_continue') {
+          reply = await practiceHandler.handlePracticeContinue(user, command.action);
+        } else {
+          reply = await stressHandler.handlePracticeContinue(user, command.action);
+        }
+        break;
+
+      // ===== ANSWER HANDLING =====
 
       case CONSTANTS.COMMAND_TYPES.ANSWER:
-        console.log(`📝 Processing generic answer submission:`, command);
         reply = await handleAnswerSubmission(user, command);
         break;
 
-      case CONSTANTS.COMMAND_TYPES.SUBJECT_SWITCH:
-        console.log(`🔄 Subject switch to: ${command.target}`);
-        if (command.target === 'math' || command.target === 'mathematics') {
-          reply = await handleSubjectSwitchCommand(user, command);
-        } else {
-          reply = await handleDirectSubjectSwitch(user, command.target);
-        }
+      case 'invalid_answer':
+        reply = command.error;
         break;
 
-      case 'math_topic_select':
-        console.log(`🧮 Math topic selection: ${command.topicNumber}`);
-        if (
-          typeof command.topicNumber === 'number' &&
-          command.topicNumber >= 1 &&
-          command.topicNumber <= 9
-        ) {
-          reply = await handleMathTopicSelection(user, command.topicNumber);
-        } else {
-          reply = `Invalid math topic choice! Pick a number 1-9 from the math topics menu! 🧮`;
-        }
+      // ===== TEXT INPUTS =====
+
+      case 'registration':
+        // Handle contextual inputs (exam date, preferred time, etc.)
+        reply = await handleContextualInput(user, command.originalInput);
         break;
 
-      case CONSTANTS.COMMAND_TYPES.REPORT:
-        reply = await handleReportCommand(user);
-        break;
+      // ===== UTILITIES =====
 
-      case CONSTANTS.COMMAND_TYPES.FRIENDS:
-        reply = await handleFriendsCommand(user, command);
-        break;
-
-      case 'post_answer_action':
-        console.log(`🎯 Post-answer action: ${command.actionNumber}`);
-        if (
-          typeof command.actionNumber === 'number' &&
-          command.actionNumber >= 1 &&
-          command.actionNumber <= 5
-        ) {
-          reply = await handlePostAnswerAction(user, command.actionNumber);
-        } else {
-          reply = `Invalid action choice! Pick a number 1-5 from the menu above! 🎯`;
-        }
-        break;
-
-      // NEW: Panic/Therapy entry + menus
-      case 'panic':
-        reply = await panicHandler.startPanic(user);
-        break;
-
-      case 'panic_menu':
-        reply = await panicHandler.handleMenu(user, command.choice);
-        break;
-
-      case 'therapy':
-        reply = await therapyHandler.startTherapy(user);
-        break;
-
-      case 'therapy_menu':
-        reply = await therapyHandler.handleMenu(user, command.choice);
+      case CONSTANTS.COMMAND_TYPES.HELP:
+        reply = await generateHelpMessage(user);
         break;
 
       case 'invalid_option':
-        reply = handleInvalidOption(command.menu, command.attempted, command.validRange);
+        reply = `Pick a number from the options above (${command.validRange}). ✨`;
         break;
 
-      case 'invalid_text_command':
-        reply = handleInvalidTextCommand(command.originalInput, user.current_menu);
+      case 'plan_cancel':
+        reply = await handlePlanCancel(user);
         break;
 
-      case CONSTANTS.COMMAND_TYPES.HELP:
-        reply = generateHelpMessage(user);
+      case 'plan_time_change':
+        reply = await handleTimeChange(user, command.time);
         break;
+
+      // ===== FALLBACK =====
 
       default:
-        console.log(
-          `⚠️ Unhandled command type: ${command.type}, input: "${command.originalInput || message}"`
-        );
+        console.log(`⚠️ Unhandled command: ${command.type}`);
 
         if (user.current_question_id) {
           reply = `To answer the question, send A, B, C, or D! 🎯`;
-        } else if (user.current_menu && user.current_menu !== 'main') {
-          reply = `Invalid choice! Use the numbered options from the menu above! 🔢\n\nNeed help? Type "menu" to start fresh! 🏠`;
+        } else if (user.current_menu && user.current_menu !== 'welcome') {
+          reply = `Use the numbered options above, or type "menu" to start fresh. ✨`;
         } else {
-          reply = await menuHandler.showMainMenu(user);
+          reply = await showWelcomeMenu(user);
         }
     }
 
-    const gptStats = aiService.getUsageStats();
     console.log(
-      `🤖 GPT Stats: ${gptStats.requestCount} requests, ~$${gptStats.estimatedCost.toFixed(3)} cost`
-    );
-    console.log(
-      `✅ Response generated (${reply.length} chars): ${reply.substring(0, 100)}${reply.length > 100 ? '...' : ''}`
+      `✅ Response (${reply.length} chars): ${reply.substring(0, 100)}${reply.length > 100 ? '...' : ''}`
     );
 
     return res.status(200).json(
@@ -321,26 +196,21 @@ export default async function handler(req, res) {
         subscriber_id: subscriberId,
         elapsed_ms: Date.now() - start,
         command_type: command.type,
-        command_details: {
-          action: command.action,
-          target: command.target,
-          menu: user.current_menu,
-          has_question: !!user.current_question_id
-        },
-        gpt_requests: gptStats.requestCount
+        user_menu: user.current_menu,
+        has_question: !!user.current_question_id
       })
     );
   } catch (error) {
-    console.error('💥 Webhook processing error:', {
+    console.error('💥 Webhook error:', {
       message: error.message,
-      stack: error.stack,
+      stack: error.stack?.substring(0, 500),
       subscriberId,
       inputMessage: message,
       timestamp: new Date().toISOString()
     });
 
     return res.status(200).json(
-      formatErrorResponse('Internal processing error occurred', {
+      formatErrorResponse("Something went wrong. Let's try again in a moment. ✨", {
         subscriber_id: subscriberId,
         elapsed_ms: Date.now() - start,
         error_type: error.name || 'UnknownError'
@@ -349,106 +219,102 @@ export default async function handler(req, res) {
   }
 }
 
-async function getCurrentQuestion(user) {
-  try {
-    if (!user.current_question_id) {
-      return null;
-    }
+// ===== CORE FUNCTIONS =====
 
-    return await executeQuery(async (supabase) => {
-      const { data, error } = await supabase
-        .from('mcqs')
-        .select('*')
-        .eq('id', user.current_question_id)
-        .single();
-
-      if (error) {
-        console.error(`❌ Get current question error:`, error);
-        return null;
-      }
-
-      return data;
-    });
-  } catch (error) {
-    console.error(`❌ getCurrentQuestion error:`, error);
-    return null;
-  }
-}
-
-async function clearUserQuestion(userId) {
-  try {
-    await updateUser(userId, {
-      current_question_id: null,
-      last_active_at: new Date().toISOString()
-    });
-
-    console.log(`✅ Cleared current question for user ${userId}`);
-    return true;
-  } catch (error) {
-    console.error(`❌ Error clearing user question for ${userId}:`, error);
-    return false;
-  }
-}
-
-async function handleQuestionCommand(user, command) {
-  return await handleQuestionRequest(user, command);
-}
-
-async function handleDirectSubjectSwitch(user, subject) {
-  await updateUser(user.id, { preferred_subjects: [subject], current_menu: null });
-  return await handleQuestionRequest(user, { action: 'next', subject: subject });
-}
-
-async function handleReportCommand(user) {
-  const totalQuestions = user.total_questions_answered || 0;
-  const correctAnswers = user.total_correct_answers || 0;
-  const accuracy = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
-  const streak = user.streak_count || 0;
-
+async function showWelcomeMenu(user) {
   await updateUser(user.id, {
-    current_menu: 'main',
+    current_menu: 'welcome',
+    current_question_id: null,
     last_active_at: new Date().toISOString()
   });
 
-  let report = `🏆 **YOUR PROGRESS REPORT**\n\n`;
-  report += `📈 **Overall Stats:**\n`;
-  report += `• Questions answered: ${totalQuestions}\n`;
-  report += `• Accuracy rate: ${accuracy}%\n`;
-  report += `• Current streak: ${streak}\n\n`;
-  report += `Ready for more? Type "next" for another question! 🚀`;
-  return report;
+  return MESSAGES.WELCOME.MAIN_MENU;
 }
 
-async function handleFriendsCommand(user, command) {
-  switch (command.action) {
-    case 'add_user':
-      // FIX: Extract message from the result
-      const result = await friendsService.addFriendByUsername(user.id, command.target);
-      return result.message || result;
-    default:
-      return await menuHandler.showFriendsMenu(user);
+async function handleAnswerSubmission(user, command) {
+  console.log(`📝 Answer submission: ${command.answer} from user ${user.id}`);
+
+  // Route to appropriate answer handler based on current menu
+  if (user.current_menu === 'stress_practice' || user.panic_session_id) {
+    return await stressHandler.handlePracticeAnswer(user, command.answer);
   }
-}
 
-function handleInvalidOption(menu, attempted, validRange) {
-  return `Eish, "${attempted}" is not a valid choice here. Please enter a number from ${validRange}.`;
-}
-
-function handleInvalidTextCommand(input, currentMenu) {
-  if (currentMenu) {
-    return `That command doesn't work in the current menu. Please use the numbered options or type "menu" to go back.`;
+  if (user.current_menu === 'confidence_practice' || user.therapy_session_id) {
+    return await confidenceHandler.handlePracticeAnswer(user, command.answer);
   }
-  return `Sorry, I didn't recognize the command "${input}". Type "help" to see what I can do!`;
+
+  if (user.current_menu === 'practice_active') {
+    return await practiceHandler.handlePracticeAnswer(user, command.answer);
+  }
+
+  return `No active question. Type "practice" to start practicing! 🧮`;
+}
+
+async function handleContextualInput(user, input) {
+  console.log(`📝 Contextual input: "${input}" from user ${user.id}, menu: ${user.current_menu}`);
+
+  // Route contextual inputs to appropriate handlers
+  if (user.current_menu?.startsWith('stress_') || user.panic_session_id) {
+    return await stressHandler.handleStressText(user, input);
+  }
+
+  if (user.current_menu?.startsWith('confidence_') || user.therapy_session_id) {
+    // Confidence flow typically doesn't need text inputs beyond menu choices
+    return `Please pick a number from the options above. 🫶`;
+  }
+
+  // Default: back to welcome
+  return await showWelcomeMenu(user);
+}
+
+async function handlePlanCancel(user) {
+  // Cancel any active study plan
+  await updateUser(user.id, {
+    current_menu: 'welcome',
+    panic_session_id: null,
+    therapy_session_id: null,
+    last_active_at: new Date().toISOString()
+  });
+
+  return (
+    `Study plan cancelled. No stress.\n\n` +
+    `Type "stressed", "boost", or "practice" when you're ready. 🌱`
+  );
+}
+
+async function handleTimeChange(user, timeString) {
+  // Simple time change handler
+  const timeMatch = timeString.match(/(\d{1,2})\s*([ap]m)?/i);
+
+  if (timeMatch) {
+    const hour = parseInt(timeMatch[1]);
+    const isPM = timeMatch[2]?.toLowerCase() === 'pm';
+    const hour24 = isPM && hour !== 12 ? hour + 12 : !isPM && hour === 12 ? 0 : hour;
+
+    // Update user's preferred time (you might want to store this)
+    await updateUser(user.id, {
+      last_active_at: new Date().toISOString()
+    });
+
+    return (
+      `Time updated to ${timeString}. ⏰\n\n` +
+      `I'll send daily reminders at that time.\n\n` +
+      `Type "practice" to continue or "menu" for options! ✨`
+    );
+  }
+
+  return `Try a time like "7pm" or "19:00". ⏰`;
 }
 
 function generateHelpMessage(user) {
-  return `Howzit! I'm The GOAT 🐐, here to help you ace your exams.\n\nHere are some commands you can use:\n- "panic": Panic Mode (Maths-only)\n- "therapy": Confidence support\n- "next": Get a new question.\n- "menu": Show the main menu.\n- "subjects": Choose a different subject.\n- "report": See your progress.\n- "friends": Manage your friends.\n\nSharp? Let's get learning!`;
-}
-
-async function handleManualHook(user, command) {
-  return await hookService.triggerHook(user.id, command.target);
-}
-
-async function handleHookStats(user) {
-  return await hookService.getHookStats(user.id);
+  return (
+    `I'm here to help you study with calm and clarity. 🧠\n\n` +
+    `🔄 **Key commands:**\n` +
+    `• "stressed" → Stress support\n` +
+    `• "boost" → Confidence help\n` +
+    `• "practice" → Question practice\n` +
+    `• "menu" → Main options\n\n` +
+    `📚 **For Grades 10-11 Maths**\n\n` +
+    `What do you need right now? ✨`
+  );
 }
