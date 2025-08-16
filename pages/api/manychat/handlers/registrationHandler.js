@@ -5,8 +5,6 @@ import {
 } from '../services/userService.js';
 import { validateUsername, validateGrade } from '../utils/validators.js';
 import { CONSTANTS, MESSAGES } from '../config/constants.js';
-import { questionService } from '../services/questionService.js';
-import { formatQuestion } from '../utils/questionFormatter.js';
 import { executeQuery } from '../config/database.js';
 
 export async function handleRegistration(user, message) {
@@ -18,9 +16,6 @@ export async function handleRegistration(user, message) {
 
     case CONSTANTS.REGISTRATION_STATES.NEEDS_GRADE:
       return await handleGradeRegistration(user, message);
-
-    case CONSTANTS.REGISTRATION_STATES.NEEDS_SUBJECTS:
-      return await handleSubjectsRegistration(user, message);
 
     case CONSTANTS.REGISTRATION_STATES.COMPLETE:
       return null;
@@ -38,9 +33,7 @@ function determineRegistrationState(user) {
     if (!user.display_name) return CONSTANTS.REGISTRATION_STATES.NEEDS_USERNAME;
     if (!user.username) return CONSTANTS.REGISTRATION_STATES.NEEDS_USERNAME;
     if (!user.grade) return CONSTANTS.REGISTRATION_STATES.NEEDS_GRADE;
-    if (!user.preferred_subjects || user.preferred_subjects.length === 0) {
-      return CONSTANTS.REGISTRATION_STATES.NEEDS_SUBJECTS;
-    }
+    // REMOVED: No longer need subjects for Panic + Therapy pivot
     return CONSTANTS.REGISTRATION_STATES.COMPLETE;
   } catch {
     return CONSTANTS.REGISTRATION_STATES.NEEDS_USERNAME;
@@ -102,73 +95,44 @@ async function handleGradeRegistration(user, message) {
     };
   }
 
+  // PIVOT: Auto-set to math-only and complete registration
   await updateUser(user.id, {
     grade: validation.grade,
+    preferred_subjects: ['math'], // AUTO-SET: Math only for Panic + Therapy
+    current_menu: 'main',
     last_active_at: new Date().toISOString()
   });
 
   const gradeDisplay = validation.grade === 'varsity' ? 'University' : `Grade ${validation.grade}`;
 
-  return {
-    reply: `Perfect! ${gradeDisplay} student 🎓\n\n${MESSAGES.REGISTRATION.SUBJECTS_PROMPT}`,
-    shouldContinue: false
-  };
-}
-
-async function handleSubjectsRegistration(user, message) {
-  const input = message.trim();
-
-  // Parse subject numbers
-  const numbers = input
-    .split(/[,\s]+/)
-    .map((n) => parseInt(n.trim(), 10))
-    .filter((n) => !isNaN(n));
-
-  if (numbers.length === 0 || numbers.some((n) => n < 1 || n > 4)) {
-    return {
-      reply: `Invalid selection! 📝\n\nPick numbers 1-4 for subjects:\n• 1 = Math\n• 2 = Physics\n• 3 = Life Sciences\n• 4 = Chemistry\n\nExample: 1,3 for Math and Life Sciences`,
-      shouldContinue: false
-    };
-  }
-
-  const subjectMap = {
-    1: 'math',
-    2: 'physics',
-    3: 'life_sciences',
-    4: 'chemistry'
-  };
-
-  const selectedSubjects = numbers.map((n) => subjectMap[n]);
-  const displayNames = selectedSubjects.map((s) => CONSTANTS.SUBJECT_DISPLAY_NAMES[s]);
-
-  await updateUser(user.id, {
-    preferred_subjects: selectedSubjects,
-    current_menu: 'main',
-    last_active_at: new Date().toISOString()
-  });
-
-  // Get first question
-  const question = await questionService.getNextQuestion(user.id);
-  let response = `🎉 **REGISTRATION COMPLETE!** 🐐\n\n`;
-  response += `📚 **Your subjects:** ${displayNames.join(', ')}\n`;
-  response += `🎓 **Grade:** ${user.grade === 'varsity' ? 'University' : `Grade ${user.grade}`}\n\n`;
-  response += `🔥 **You're ready to dominate!**\n\n`;
-
-  if (question) {
-    await questionService.serveQuestionToUser(user.id, question.id);
-    response += `Here's your first question:\n\n${formatQuestion(question)}`;
-  } else {
-    response += `Type "next" to get your first question! 🚀`;
-  }
+  // PIVOT: New welcome message for Panic + Therapy platform
+  const welcomeMessage =
+    `🎉 **WELCOME TO THE GOAT!** 🐐\n\n` +
+    `${gradeDisplay} Maths support is ready!\n\n` +
+    `🚨 **When you're stressed:** Type "panic" for emergency help\n` +
+    `🧠 **When you doubt yourself:** Type "therapy" for confidence boost\n` +
+    `🎯 **For practice:** Type "next" for questions\n\n` +
+    `**Ready to dominate maths? Let's go!** 💪\n\n` +
+    `Type "help" to see all commands or "next" to start! 🚀`;
 
   return {
-    reply: response,
+    reply: welcomeMessage,
     shouldContinue: false
   };
 }
 
 export function getWelcomeMessage() {
-  return MESSAGES.REGISTRATION.WELCOME;
+  return (
+    `🎉 **WELCOME TO THE GOAT!** 🐐\n\n` +
+    `Your personal Maths confidence companion!\n\n` +
+    `🔥 **What we do:**\n` +
+    `• 🚨 **Panic Mode**: Emergency help when you're stressed\n` +
+    `• 🧠 **Therapy Mode**: Build your academic confidence\n` +
+    `• 🎯 **Practice**: Sharpen your maths skills\n\n` +
+    `Let's get you set up! First, what should I call you?\n\n` +
+    `💡 **Examples:** Alex, Sarah, Thabo, or your real name\n\n` +
+    `Type your name to continue! ✨`
+  );
 }
 
 export function getUserRegistrationState(user) {
