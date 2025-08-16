@@ -1,7 +1,7 @@
 /**
  * Stress Support Handler (Formerly Panic)
- * Date: 2025-08-16 17:24:11 UTC
- * FIXED: Grade input processing and context management
+ * Date: 2025-08-16 17:32:35 UTC
+ * EMERGENCY FIX: Removed expecting_input_type dependencies
  * Flow: Grade → Stress Level → Subject → Exam Date → Study Plan
  */
 
@@ -69,7 +69,9 @@ export const stressHandler = {
       session.focus_subject = 'math';
       session.session_state = { step: 'ask_exam_date' };
       await saveSession(session);
-      await markUserExpectingInput(user.id, 'exam_date');
+
+      // FIXED: Don't use expecting_input_type
+      await updateUser(user.id, { current_menu: 'stress_exam_date' });
 
       const response =
         choice !== 1
@@ -85,7 +87,7 @@ export const stressHandler = {
         if (session.exam_hours_away > 3) {
           session.session_state = { step: 'ask_preferred_time' };
           await saveSession(session);
-          await markUserExpectingInput(user.id, 'preferred_time');
+          await updateUser(user.id, { current_menu: 'stress_time' });
           return MESSAGES.STRESS.TIME_PROMPT;
         } else {
           session.plan_opt_in = true;
@@ -126,7 +128,7 @@ export const stressHandler = {
     return `I didn't catch that. Let's try again. 🌱`;
   },
 
-  // Handle text inputs (FIXED - Critical bug fix)
+  // Handle text inputs (FIXED - No expecting_input_type)
   async handleStressText(user, text) {
     const session = await getOrCreateActiveStressSession(user.id);
     const state = session.session_state || {};
@@ -209,11 +211,10 @@ export const stressHandler = {
     return `I didn't catch that. Type "menu" to start over. 🌱`;
   },
 
-  // Rest of the handler methods remain the same...
+  // Rest of methods remain the same but with menu updates only
   async startLesson(user, session) {
     const topic = session.current_topic || 'calculus';
 
-    // Show micro-lesson first
     await updateUser(user.id, { current_menu: 'lesson' });
 
     const lessonContent =
@@ -349,7 +350,7 @@ export const stressHandler = {
   }
 };
 
-// Helper functions (FIXED)
+// Helper functions (FIXED - No expecting_input_type)
 async function getOrCreateActiveStressSession(userId) {
   return await executeQuery(async (supabase) => {
     const { data: existing } = await supabase
@@ -396,7 +397,7 @@ async function saveSession(session) {
   });
 }
 
-// CRITICAL FIX: Enhanced user state management
+// CRITICAL FIX: Simplified user state management (no expecting_input_type)
 async function markUserInStressFlow(userId, sessionId, step) {
   const menuMap = {
     ask_grade: 'stress_grade',
@@ -407,14 +408,6 @@ async function markUserInStressFlow(userId, sessionId, step) {
   await updateUser(userId, {
     current_menu: menuMap[step] || 'stress_level',
     panic_session_id: sessionId,
-    expecting_input_type: step === 'ask_grade' ? 'grade' : null,
-    last_active_at: new Date().toISOString()
-  });
-}
-
-async function markUserExpectingInput(userId, inputType) {
-  await updateUser(userId, {
-    expecting_input_type: inputType,
     last_active_at: new Date().toISOString()
   });
 }
@@ -424,7 +417,6 @@ async function clearStressState(userId) {
     current_menu: 'welcome',
     panic_session_id: null,
     current_question_id: null,
-    expecting_input_type: null,
     last_active_at: new Date().toISOString()
   });
 }

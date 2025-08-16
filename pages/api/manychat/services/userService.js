@@ -35,10 +35,13 @@ export async function findOrCreateUser(subscriberId) {
 
 export async function updateUser(userId, updates) {
   return executeQuery(async (supabase) => {
+    // CRITICAL FIX: Remove expecting_input_type from updates
+    const { expecting_input_type, ...safeUpdates } = updates;
+
     const { data, error } = await supabase
       .from('users')
       .update({
-        ...updates,
+        ...safeUpdates,
         updated_at: new Date().toISOString()
       })
       .eq('id', userId)

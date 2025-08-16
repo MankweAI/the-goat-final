@@ -1,7 +1,7 @@
 /**
  * The GOAT - Main Webhook Handler (Stress & Confidence Focus)
- * Date: 2025-08-16 17:24:11 UTC
- * FIXED: Contextual input handling for grade collection
+ * Date: 2025-08-16 17:32:35 UTC
+ * EMERGENCY FIX: Removed expecting_input_type dependencies
  */
 
 import { findOrCreateUser, updateUserActivity, updateUser } from './services/userService.js';
@@ -48,17 +48,19 @@ export default async function handler(req, res) {
     }
 
     console.log(
-      `👤 User ${user.id} | Menu: ${user.current_menu} | ExpectingInput: ${user.expecting_input_type}`
+      `👤 User ${user.id} | Menu: ${user.current_menu} | Session: ${user.panic_session_id || user.therapy_session_id || 'none'}`
     );
 
     await updateUserActivity(user.id);
 
-    // CRITICAL FIX: Enhanced context for command parsing
+    // EMERGENCY FIX: Determine expecting input from session state instead
+    const expectingInput = await determineExpectingInputFromContext(user);
+
     const command = parseCommand(message, {
       current_menu: user.current_menu,
       has_current_question: !!user.current_question_id,
       expecting_answer: !!user.current_question_id,
-      expecting_input_type: user.expecting_input_type, // NEW: Critical for grade input
+      expecting_input_type: expectingInput, // Use derived value
       expecting_registration_input: false
     });
 
@@ -97,7 +99,7 @@ export default async function handler(req, res) {
         }
         break;
 
-      // ===== CRITICAL FIX: Contextual inputs =====
+      // ===== CONTEXTUAL INPUTS =====
 
       case 'contextual_input':
         reply = await handleContextualInput(user, command.originalInput, command.input_type);
@@ -143,7 +145,7 @@ export default async function handler(req, res) {
         reply = command.error;
         break;
 
-      // ===== LEGACY TEXT INPUTS =====
+      // ===== TEXT INPUTS =====
 
       case 'registration':
         reply = await handleLegacyContextualInput(user, command.originalInput);
@@ -213,20 +215,26 @@ export default async function handler(req, res) {
   }
 }
 
-// ===== CORE FUNCTIONS =====
+// ===== EMERGENCY FIX FUNCTIONS =====
+
+async function determineExpectingInputFromContext(user) {
+  // Derive expecting input type from current menu instead of database column
+  if (user.current_menu === 'stress_grade') return 'grade';
+  if (user.current_menu === 'stress_exam_date') return 'exam_date';
+  if (user.current_menu === 'stress_time') return 'preferred_time';
+  return null;
+}
 
 async function showWelcomeMenu(user) {
   await updateUser(user.id, {
     current_menu: 'welcome',
     current_question_id: null,
-    expecting_input_type: null, // Clear any expecting input state
     last_active_at: new Date().toISOString()
   });
 
   return MESSAGES.WELCOME.MAIN_MENU;
 }
 
-// CRITICAL FIX: Enhanced contextual input handling
 async function handleContextualInput(user, input, inputType) {
   console.log(`📝 Contextual input: type="${inputType}", input="${input}" from user ${user.id}`);
 
@@ -286,7 +294,6 @@ async function handlePlanCancel(user) {
     current_menu: 'welcome',
     panic_session_id: null,
     therapy_session_id: null,
-    expecting_input_type: null,
     last_active_at: new Date().toISOString()
   });
 
@@ -305,7 +312,6 @@ async function handleTimeChange(user, timeString) {
     const hour24 = isPM && hour !== 12 ? hour + 12 : !isPM && hour === 12 ? 0 : hour;
 
     await updateUser(user.id, {
-      expecting_input_type: null,
       last_active_at: new Date().toISOString()
     });
 
