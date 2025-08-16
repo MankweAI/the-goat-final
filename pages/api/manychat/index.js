@@ -1,9 +1,6 @@
 /**
- * The GOAT - Complete ManyChat Webhook Handler (FULLY FIXED)
- *
- * Architecture: ManyChat (External Request) -> This API Route -> Supabase
- * Update: Fixed all critical bugs, improved error handling, and security
- * Date: 2025-08-15 17:13:45 UTC
+ * The GOAT - Complete ManyChat Webhook Handler (UPDATED for Panic + Therapy MVP)
+ * Date: 2025-08-16 14:24:55 UTC
  */
 
 import { executeQuery } from './config/database.js';
@@ -32,11 +29,15 @@ import { aiService } from './services/aiService.js';
 import { CONSTANTS } from './config/constants.js';
 import { handlePostAnswerAction } from './handlers/postAnswerHandler.js';
 
+// NEW: Panic/Therapy handlers
+import { panicHandler } from './handlers/panicHandler.js';
+import { therapyHandler } from './handlers/therapyHandler.js';
+
 export default async function handler(req, res) {
   const start = Date.now();
 
-  console.log('🚀 ENHANCED CODE ACTIVE - 2025-08-15 17:13:45');
-  console.log('✅ Features: Fixed bugs, improved error handling, enhanced security');
+  console.log('🚀 ENHANCED CODE ACTIVE - 2025-08-16 14:24:55');
+  console.log('✅ Features: Panic + Therapy MVP');
 
   if (req.method !== 'POST') {
     return res.status(405).json(
@@ -170,6 +171,31 @@ export default async function handler(req, res) {
 
     let reply = '';
 
+    // Panic/Therapy answer interception BEFORE generic answer flow
+    if (command.type === CONSTANTS.COMMAND_TYPES.ANSWER) {
+      if (user.current_menu === 'panic') {
+        reply = await panicHandler.handleAnswer(user, command.answer);
+        return res.status(200).json(
+          formatResponse(reply, {
+            subscriber_id: subscriberId,
+            elapsed_ms: Date.now() - start,
+            command_type: 'panic_answer'
+          })
+        );
+      }
+      if (user.current_menu === 'therapy') {
+        reply = await therapyHandler.handleAnswer(user, command.answer);
+        return res.status(200).json(
+          formatResponse(reply, {
+            subscriber_id: subscriberId,
+            elapsed_ms: Date.now() - start,
+            command_type: 'therapy_answer'
+          })
+        );
+      }
+    }
+
+    // Standard switch
     switch (command.type) {
       case 'main_menu':
         reply = await menuHandler.showMainMenu(user);
@@ -192,7 +218,7 @@ export default async function handler(req, res) {
         break;
 
       case CONSTANTS.COMMAND_TYPES.ANSWER:
-        console.log(`📝 Processing answer submission:`, command);
+        console.log(`📝 Processing generic answer submission:`, command);
         reply = await handleAnswerSubmission(user, command);
         break;
 
@@ -237,6 +263,23 @@ export default async function handler(req, res) {
         } else {
           reply = `Invalid action choice! Pick a number 1-5 from the menu above! 🎯`;
         }
+        break;
+
+      // NEW: Panic/Therapy entry + menus
+      case 'panic':
+        reply = await panicHandler.startPanic(user);
+        break;
+
+      case 'panic_menu':
+        reply = await panicHandler.handleMenu(user, command.choice);
+        break;
+
+      case 'therapy':
+        reply = await therapyHandler.startTherapy(user);
+        break;
+
+      case 'therapy_menu':
+        reply = await therapyHandler.handleMenu(user, command.choice);
         break;
 
       case 'invalid_option':
@@ -379,7 +422,8 @@ async function handleReportCommand(user) {
 async function handleFriendsCommand(user, command) {
   switch (command.action) {
     case 'add_user':
-      return await friendsService.addFriend(user.id, command.target);
+      // Align with friendsService method name
+      return await friendsService.addFriendByUsername(user.id, command.target);
     default:
       return await menuHandler.showFriendsMenu(user);
   }
@@ -397,7 +441,7 @@ function handleInvalidTextCommand(input, currentMenu) {
 }
 
 function generateHelpMessage(user) {
-  return `Howzit! I'm The GOAT 🐐, here to help you ace your exams.\n\nHere are some commands you can use:\n- **"next"**: Get a new question.\n- **"menu"**: Show the main menu.\n- **"subjects"**: Choose a different subject.\n- **"report"**: See your progress.\n- **"friends"**: Manage your friends.\n\nSharp? Let's get learning!`;
+  return `Howzit! I'm The GOAT 🐐, here to help you ace your exams.\n\nHere are some commands you can use:\n- "panic": Panic Mode (Maths-only)\n- "therapy": Confidence support\n- "next": Get a new question.\n- "menu": Show the main menu.\n- "subjects": Choose a different subject.\n- "report": See your progress.\n- "friends": Manage your friends.\n\nSharp? Let's get learning!`;
 }
 
 async function handleManualHook(user, command) {

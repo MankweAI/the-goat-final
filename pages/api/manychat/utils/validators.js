@@ -23,12 +23,9 @@ export function validateGrade(grade) {
   if (!CONSTANTS.VALID_GRADES.includes(normalized)) {
     return {
       isValid: false,
-      error: 'Invalid grade. Choose from: 8, 9, 10, 11, 12, or varsity'
+      error: 'Invalid grade. MVP supports Grade 10 or 11'
     };
   }
 
   return { isValid: true, grade: normalized };
 }
-
-
-

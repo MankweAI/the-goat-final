@@ -1,7 +1,7 @@
 /**
  * The GOAT Bot - Enhanced Constants Configuration
- * Updated: 2025-08-15 12:00:28 UTC
- * Features: Math sub-topics, post-answer menus, enhanced navigation
+ * Updated: 2025-08-16 14:24:55 UTC
+ * Features: Math sub-topics, post-answer menus, enhanced navigation + Panic/Therapy MVP hooks
  */
 
 export const CONSTANTS = {
@@ -119,7 +119,9 @@ export const CONSTANTS = {
     FRIENDS: 'friends',
     SETTINGS: 'settings',
     POST_ANSWER: 'post_answer',
-    QUESTION_ACTIVE: 'question_active'
+    QUESTION_ACTIVE: 'question_active',
+    PANIC: 'panic',
+    THERAPY: 'therapy'
   },
 
   // ✅ NEW: Answer validation patterns
@@ -221,7 +223,9 @@ export const CONSTANTS = {
     math_topics: '1-9',
     friends: '1-4',
     settings: '1-3',
-    post_answer: '1-5'
+    post_answer: '1-5',
+    panic: '1-5',
+    therapy: '1-5'
   },
 
   // ✅ NEW: Topic emojis
@@ -384,7 +388,6 @@ export const MESSAGES = {
       `💡 **Example:** sarah123\n\n` +
       `What's their username? 🤝`,
 
-    // ✅ FIXED: Remove friend code references
     CHALLENGE_PROMPT:
       `⚔️ **CHALLENGE A FRIEND**\n\n` +
       `Who do you want to battle?\n\n` +
@@ -421,5 +424,13 @@ export const MESSAGES = {
     'Answer with A, B, C or D! 🔥',
     'Type A, B, C or D to answer! 🎯',
     'Send your choice (A, B, C or D)! ⚡'
-  ]
+  ],
+
+  // Optional stubs for Panic/Therapy copy if needed later
+  PANIC: {
+    PANIC_ONLY_MATH: 'For now, Panic Mode is Maths-only. Physics/Chem coming soon. 💪'
+  },
+  THERAPY: {
+    MICRO_SUPPORT_REMINDER: 'Short, sharp, and kind. Keep it under 30 words.'
+  }
 };

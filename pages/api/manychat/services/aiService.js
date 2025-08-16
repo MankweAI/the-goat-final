@@ -153,6 +153,37 @@ Generate a brief, encouraging message using South African youth slang. Keep it u
     }
   }
 
+  // NEW: micro-support for therapy (≤30 words)
+  async generateTherapySupport(userProfile, reason, preConfidence) {
+    try {
+      const client = await this.getClient();
+      const userPrompt = `Student context:
+- Username: ${userProfile.username || 'student'}
+- Grade: ${userProfile.grade || '10'}
+- Reason: ${reason}
+- Confidence (1-5): ${preConfidence}
+
+Write one micro-support line (≤30 words) that validates and gives one tiny step. Keep SA slang natural. Max 2 emojis.`;
+
+      const completion = await client.chat.completions.create({
+        model: OPENAI_CONFIG.MODEL,
+        messages: [
+          { role: 'system', content: GPT_PROMPTS.THERAPY_SYSTEM },
+          { role: 'user', content: userPrompt }
+        ],
+        max_tokens: 64,
+        temperature: 0.7
+      });
+
+      this.requestCount++;
+      return completion.choices[0].message.content.trim();
+    } catch (error) {
+      console.error('❌ Therapy micro-support failed:', error);
+      // fallback line
+      return `Eish, it happens. Breathe, then try one small step: 1 easy maths question. Sharp, you’ve got this. 💪`;
+    }
+  }
+
   generateFallbackExplanation(questionData, userAnswer, correctAnswer) {
     const topic = questionData.topic || 'this concept';
 
@@ -186,4 +217,3 @@ Keep going, you're getting sharper! 💪`;
 
 // Singleton instance
 export const aiService = new AIService();
-

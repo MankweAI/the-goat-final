@@ -1,6 +1,6 @@
 /**
  * Enhanced Command Parser with Fixed Logic Priority and Validation
- * Date: 2025-08-15 17:13:45 UTC
+ * Date: 2025-08-16 14:24:55 UTC
  */
 
 import { CONSTANTS } from '../config/constants.js';
@@ -9,8 +9,9 @@ export function parseCommand(input, context = {}) {
   const trimmed = input.trim().toLowerCase();
   const originalInput = input.trim();
 
-  console.log(`🔍 Parsing command: "${trimmed}" with context:`, context); // PRIORITY 1: Handle answer submissions if a question is active
+  console.log(`🔍 Parsing command: "${trimmed}" with context:`, context);
 
+  // PRIORITY 1: Handle answer submissions if a question is active
   if (context.expecting_answer || context.has_current_question) {
     const answerResult = parseAnswerInput(originalInput);
     if (answerResult.isValid) {
@@ -19,29 +20,33 @@ export function parseCommand(input, context = {}) {
     if (answerResult.isInvalid) {
       return { type: 'invalid_answer', error: answerResult.error };
     }
-  } // PRIORITY 2: Handle numbered menu inputs BEFORE global text commands
+  }
 
+  // PRIORITY 2: Handle numbered menu inputs BEFORE global text commands
   if (context.current_menu) {
     const menuResult = parseMenuInput(originalInput, context.current_menu);
     if (menuResult.isValid) {
       console.log(`✅ Valid menu input parsed:`, menuResult.command);
       return menuResult.command;
     }
-  } // PRIORITY 3: Handle global text commands
+  }
 
+  // PRIORITY 3: Handle global text commands
   const globalCommand = parseGlobalCommands(trimmed, originalInput);
   if (globalCommand.type !== 'unrecognized') {
     console.log(`✅ Global command recognized: ${globalCommand.type}`);
     return globalCommand;
-  } // PRIORITY 4: Handle contextual text inputs
+  }
 
+  // PRIORITY 4: Handle contextual text inputs
   if (context.expecting_registration_input) {
     return { type: 'registration', action: 'process_input', originalInput };
   }
   if (context.expecting_username) {
     return { type: CONSTANTS.COMMAND_TYPES.FRIENDS, action: 'add_user', target: trimmed };
-  } // PRIORITY 5: Invalid option for current menu
+  }
 
+  // PRIORITY 5: Invalid option for current menu
   if (context.current_menu) {
     return {
       type: 'invalid_option',
@@ -49,8 +54,9 @@ export function parseCommand(input, context = {}) {
       attempted: originalInput,
       validRange: getMenuRange(context.current_menu)
     };
-  } // DEFAULT: Fallback for unrecognized input
+  }
 
+  // DEFAULT: Fallback for unrecognized input
   console.log(`⚠️ Unrecognized input: "${trimmed}"`);
   return { type: 'unrecognized', originalInput };
 }
@@ -93,6 +99,21 @@ function parseMenuInput(input, currentMenu) {
       3: { type: 'post_answer_action', actionNumber: 3 },
       4: { type: 'post_answer_action', actionNumber: 4 },
       5: { type: 'post_answer_action', actionNumber: 5 }
+    },
+    // NEW: Panic/Therapy generic numeric handlers
+    panic: {
+      1: { type: 'panic_menu', choice: 1 },
+      2: { type: 'panic_menu', choice: 2 },
+      3: { type: 'panic_menu', choice: 3 },
+      4: { type: 'panic_menu', choice: 4 },
+      5: { type: 'panic_menu', choice: 5 }
+    },
+    therapy: {
+      1: { type: 'therapy_menu', choice: 1 },
+      2: { type: 'therapy_menu', choice: 2 },
+      3: { type: 'therapy_menu', choice: 3 },
+      4: { type: 'therapy_menu', choice: 4 },
+      5: { type: 'therapy_menu', choice: 5 }
     }
   };
 
@@ -111,7 +132,10 @@ function parseGlobalCommands(trimmed, originalInput) {
     help: { type: CONSTANTS.COMMAND_TYPES.HELP, action: 'show' },
     report: { type: CONSTANTS.COMMAND_TYPES.REPORT, action: 'show' },
     subjects: { type: 'subject_menu', action: 'show' },
-    friends: { type: 'friends_menu', action: 'show' }
+    friends: { type: 'friends_menu', action: 'show' },
+    panic: { type: 'panic', action: 'start' },
+    'panic mode': { type: 'panic', action: 'start' },
+    therapy: { type: 'therapy', action: 'start' }
   };
 
   if (commandMap[trimmed]) {
@@ -163,7 +187,9 @@ function getMenuRange(menu) {
     math_topics: '1-9',
     friends: '1-4',
     settings: '1-3',
-    post_answer: '1-5'
+    post_answer: '1-5',
+    panic: '1-5',
+    therapy: '1-5'
   };
   return ranges[menu] || 'a valid number';
 }
