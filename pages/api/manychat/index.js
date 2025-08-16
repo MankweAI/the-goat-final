@@ -1,7 +1,7 @@
 /**
  * The GOAT - Main Webhook Handler (Stress & Confidence Focus)
- * Date: 2025-08-16 17:03:51 UTC
- * Complete rewrite for proactive educational platform
+ * Date: 2025-08-16 17:24:11 UTC
+ * FIXED: Contextual input handling for grade collection
  */
 
 import { findOrCreateUser, updateUserActivity, updateUser } from './services/userService.js';
@@ -9,7 +9,6 @@ import { parseCommand } from './utils/commandParser.js';
 import { formatResponse, formatErrorResponse } from './utils/responseFormatter.js';
 import { CONSTANTS, MESSAGES } from './config/constants.js';
 
-// Import new handlers
 import { stressHandler } from './handlers/stressHandler.js';
 import { confidenceHandler } from './handlers/confidenceHandler.js';
 import { practiceHandler } from './handlers/practiceHandler.js';
@@ -18,7 +17,6 @@ export default async function handler(req, res) {
   const start = Date.now();
 
   console.log('🚀 THE GOAT v2.0 - STRESS & CONFIDENCE PLATFORM ACTIVE');
-  console.log('✅ Features: Zero friction, Proactive support, Gentle guidance');
 
   if (req.method !== 'POST') {
     return res.status(405).json(
@@ -41,41 +39,32 @@ export default async function handler(req, res) {
     );
   }
 
-  if (message.length > 1000) {
-    return res.status(400).json(
-      formatErrorResponse('Message too long (max 1000 characters)', {
-        subscriber_id: subscriberId,
-        elapsed_ms: Date.now() - start
-      })
-    );
-  }
-
   console.log(`📥 Message from ${subscriberId}: "${message.substring(0, 100)}"`);
 
   try {
-    // Find or create user (PSID-only, no registration barriers)
     const user = await findOrCreateUser(subscriberId);
     if (!user) {
       throw new Error('Failed to find or create user');
     }
 
     console.log(
-      `👤 User ${user.id} | Menu: ${user.current_menu} | Grade: ${user.grade || 'unknown'}`
+      `👤 User ${user.id} | Menu: ${user.current_menu} | ExpectingInput: ${user.expecting_input_type}`
     );
 
     await updateUserActivity(user.id);
 
-    // Parse command with current context
+    // CRITICAL FIX: Enhanced context for command parsing
     const command = parseCommand(message, {
       current_menu: user.current_menu,
       has_current_question: !!user.current_question_id,
       expecting_answer: !!user.current_question_id,
-      expecting_registration_input: false // No registration barriers
+      expecting_input_type: user.expecting_input_type, // NEW: Critical for grade input
+      expecting_registration_input: false
     });
 
     console.log(`🎯 Command parsed: ${command.type}`, {
       action: command.action,
-      choice: command.choice,
+      inputType: command.input_type,
       originalInput: command.originalInput?.substring(0, 50)
     });
 
@@ -106,6 +95,12 @@ export default async function handler(req, res) {
         if (command.action === 'start') {
           reply = await practiceHandler.startPractice(user);
         }
+        break;
+
+      // ===== CRITICAL FIX: Contextual inputs =====
+
+      case 'contextual_input':
+        reply = await handleContextualInput(user, command.originalInput, command.input_type);
         break;
 
       // ===== MENU NAVIGATION =====
@@ -148,11 +143,10 @@ export default async function handler(req, res) {
         reply = command.error;
         break;
 
-      // ===== TEXT INPUTS =====
+      // ===== LEGACY TEXT INPUTS =====
 
       case 'registration':
-        // Handle contextual inputs (exam date, preferred time, etc.)
-        reply = await handleContextualInput(user, command.originalInput);
+        reply = await handleLegacyContextualInput(user, command.originalInput);
         break;
 
       // ===== UTILITIES =====
@@ -225,16 +219,53 @@ async function showWelcomeMenu(user) {
   await updateUser(user.id, {
     current_menu: 'welcome',
     current_question_id: null,
+    expecting_input_type: null, // Clear any expecting input state
     last_active_at: new Date().toISOString()
   });
 
   return MESSAGES.WELCOME.MAIN_MENU;
 }
 
+// CRITICAL FIX: Enhanced contextual input handling
+async function handleContextualInput(user, input, inputType) {
+  console.log(`📝 Contextual input: type="${inputType}", input="${input}" from user ${user.id}`);
+
+  // Route based on input type
+  if (inputType === 'grade' || inputType === 'exam_date' || inputType === 'preferred_time') {
+    return await stressHandler.handleStressText(user, input);
+  }
+
+  if (inputType?.startsWith('confidence_')) {
+    return (
+      (await confidenceHandler.handleConfidenceText?.(user, input)) ||
+      `Please pick a number from the options above. 🫶`
+    );
+  }
+
+  // Fallback to legacy handling
+  return await handleLegacyContextualInput(user, input);
+}
+
+async function handleLegacyContextualInput(user, input) {
+  console.log(
+    `📝 Legacy contextual input: "${input}" from user ${user.id}, menu: ${user.current_menu}`
+  );
+
+  // Route contextual inputs to appropriate handlers
+  if (user.current_menu?.startsWith('stress_') || user.panic_session_id) {
+    return await stressHandler.handleStressText(user, input);
+  }
+
+  if (user.current_menu?.startsWith('confidence_') || user.therapy_session_id) {
+    return `Please pick a number from the options above. 🫶`;
+  }
+
+  return await showWelcomeMenu(user);
+}
+
 async function handleAnswerSubmission(user, command) {
   console.log(`📝 Answer submission: ${command.answer} from user ${user.id}`);
 
-  // Route to appropriate answer handler based on current menu
   if (user.current_menu === 'stress_practice' || user.panic_session_id) {
     return await stressHandler.handlePracticeAnswer(user, command.answer);
   }
@@ -250,29 +281,12 @@ async function handleAnswerSubmission(user, command) {
   return `No active question. Type "practice" to start practicing! 🧮`;
 }
 
-async function handleContextualInput(user, input) {
-  console.log(`📝 Contextual input: "${input}" from user ${user.id}, menu: ${user.current_menu}`);
-
-  // Route contextual inputs to appropriate handlers
-  if (user.current_menu?.startsWith('stress_') || user.panic_session_id) {
-    return await stressHandler.handleStressText(user, input);
-  }
-
-  if (user.current_menu?.startsWith('confidence_') || user.therapy_session_id) {
-    // Confidence flow typically doesn't need text inputs beyond menu choices
-    return `Please pick a number from the options above. 🫶`;
-  }
-
-  // Default: back to welcome
-  return await showWelcomeMenu(user);
-}
-
 async function handlePlanCancel(user) {
-  // Cancel any active study plan
   await updateUser(user.id, {
     current_menu: 'welcome',
     panic_session_id: null,
     therapy_session_id: null,
+    expecting_input_type: null,
     last_active_at: new Date().toISOString()
   });
 
@@ -283,7 +297,6 @@ async function handlePlanCancel(user) {
 }
 
 async function handleTimeChange(user, timeString) {
-  // Simple time change handler
   const timeMatch = timeString.match(/(\d{1,2})\s*([ap]m)?/i);
 
   if (timeMatch) {
@@ -291,8 +304,8 @@ async function handleTimeChange(user, timeString) {
     const isPM = timeMatch[2]?.toLowerCase() === 'pm';
     const hour24 = isPM && hour !== 12 ? hour + 12 : !isPM && hour === 12 ? 0 : hour;
 
-    // Update user's preferred time (you might want to store this)
     await updateUser(user.id, {
+      expecting_input_type: null,
       last_active_at: new Date().toISOString()
     });
 

@@ -1,7 +1,8 @@
 /**
  * Enhanced Command Parser - Stress & Confidence Focus
- * Date: 2025-08-16 16:53:38 UTC
- * Priority: Global commands → Menu navigation → Fallbacks
+ * Date: 2025-08-16 17:24:11 UTC
+ * FIXED: Grade input contextual handling
+ * Priority: Global commands → Context inputs → Menu navigation → Fallbacks
  */
 
 import { CONSTANTS } from '../config/constants.js';
@@ -11,7 +12,7 @@ export function parseCommand(input, context = {}) {
   const originalInput = input.trim();
 
   console.log(
-    `🔍 Parsing: "${trimmed}" | Menu: ${context.current_menu} | Question: ${!!context.has_current_question}`
+    `🔍 Parsing: "${trimmed}" | Menu: ${context.current_menu} | Question: ${!!context.has_current_question} | Expecting: ${context.expecting_input_type}`
   );
 
   // ✅ PRIORITY 1: Answer submissions (highest priority)
@@ -40,7 +41,17 @@ export function parseCommand(input, context = {}) {
     return globalCommand;
   }
 
-  // ✅ PRIORITY 3: Menu navigation
+  // ✅ PRIORITY 3: Contextual text inputs (NEW - CRITICAL FIX)
+  if (context.expecting_input_type) {
+    console.log(`✅ Contextual input: ${context.expecting_input_type}`);
+    return {
+      type: 'contextual_input',
+      input_type: context.expecting_input_type,
+      originalInput
+    };
+  }
+
+  // ✅ PRIORITY 4: Menu navigation
   if (context.current_menu) {
     const menuResult = parseMenuInput(originalInput, context.current_menu);
     if (menuResult.isValid) {
@@ -58,17 +69,17 @@ export function parseCommand(input, context = {}) {
     }
   }
 
-  // ✅ PRIORITY 4: Contextual inputs
+  // ✅ PRIORITY 5: Legacy registration (kept for backward compatibility)
   if (context.expecting_registration_input) {
     return { type: 'registration', action: 'process_input', originalInput };
   }
 
-  // ✅ PRIORITY 5: Fallback
+  // ✅ PRIORITY 6: Fallback
   console.log(`⚠️ Unrecognized: "${trimmed}"`);
   return { type: 'unrecognized', originalInput };
 }
 
-// ✅ Enhanced global commands (moved up in priority)
+// ✅ Enhanced global commands (unchanged)
 function parseGlobalCommands(trimmed, originalInput) {
   // Core flow triggers
   if (['stressed', 'stress', 'steady', 'reset'].includes(trimmed)) {
@@ -111,7 +122,7 @@ function parseGlobalCommands(trimmed, originalInput) {
   return { type: 'unrecognized', originalInput };
 }
 
-// ✅ Menu input parsing (updated for new flows)
+// ✅ Menu input parsing (unchanged)
 function parseMenuInput(input, currentMenu) {
   const number = parseInt(input.trim());
 

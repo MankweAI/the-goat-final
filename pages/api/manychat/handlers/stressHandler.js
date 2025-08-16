@@ -1,6 +1,7 @@
 /**
  * Stress Support Handler (Formerly Panic)
- * Date: 2025-08-16 16:53:38 UTC
+ * Date: 2025-08-16 17:24:11 UTC
+ * FIXED: Grade input processing and context management
  * Flow: Grade → Stress Level → Subject → Exam Date → Study Plan
  */
 
@@ -19,7 +20,7 @@ export const stressHandler = {
     if (!user.grade) {
       session.session_state = { step: 'ask_grade' };
       await saveSession(session);
-      await markUserInStressFlow(user.id, session.id);
+      await markUserInStressFlow(user.id, session.id, 'ask_grade');
 
       return MESSAGES.WELCOME.GRADE_PROMPT;
     }
@@ -27,7 +28,7 @@ export const stressHandler = {
     // Go straight to stress level
     session.session_state = { step: 'ask_stress_level' };
     await saveSession(session);
-    await markUserInStressFlow(user.id, session.id);
+    await markUserInStressFlow(user.id, session.id, 'stress_level');
 
     return generateStressLevelPrompt();
   },
@@ -40,21 +41,12 @@ export const stressHandler = {
 
     console.log(`🔍 Stress flow: step=${step}, choice=${choice}`);
 
-    if (step === 'ask_grade') {
-      if (['10', '11', 'varsity'].includes(String(choice))) {
-        await updateUser(user.id, { grade: String(choice) });
-        session.session_state = { step: 'ask_stress_level' };
-        await saveSession(session);
-        return generateStressLevelPrompt();
-      }
-      return `Please choose 10, 11, or varsity for your grade. 🎓`;
-    }
-
     if (step === 'ask_stress_level') {
       if (choice >= 1 && choice <= 4) {
         session.stress_level = choice;
         session.session_state = { step: 'ask_subject' };
         await saveSession(session);
+        await updateUser(user.id, { current_menu: 'stress_subject' });
 
         // Add validation based on stress level
         const validation =
@@ -77,6 +69,7 @@ export const stressHandler = {
       session.focus_subject = 'math';
       session.session_state = { step: 'ask_exam_date' };
       await saveSession(session);
+      await markUserExpectingInput(user.id, 'exam_date');
 
       const response =
         choice !== 1
@@ -86,16 +79,13 @@ export const stressHandler = {
       return response + MESSAGES.STRESS.EXAM_DATE_PROMPT;
     }
 
-    if (step === 'ask_exam_date') {
-      return `Please tell me your exam date (e.g., "22 Aug 7pm") or say "skip". ⏳`;
-    }
-
     if (step === 'plan_decision') {
       if (choice === 1) {
         // Yes to plan
         if (session.exam_hours_away > 3) {
           session.session_state = { step: 'ask_preferred_time' };
           await saveSession(session);
+          await markUserExpectingInput(user.id, 'preferred_time');
           return MESSAGES.STRESS.TIME_PROMPT;
         } else {
           session.plan_opt_in = true;
@@ -110,11 +100,6 @@ export const stressHandler = {
         await saveSession(session);
         return await generateShortPlan(session);
       }
-    }
-
-    if (step === 'ask_preferred_time') {
-      // They should provide time via text, not number
-      return `Please tell me your preferred daily time (e.g., "7pm"). ⏰`;
     }
 
     if (step === 'plan_action') {
@@ -141,10 +126,32 @@ export const stressHandler = {
     return `I didn't catch that. Let's try again. 🌱`;
   },
 
-  // Handle text inputs (exam date, preferred time)
+  // Handle text inputs (FIXED - Critical bug fix)
   async handleStressText(user, text) {
     const session = await getOrCreateActiveStressSession(user.id);
     const state = session.session_state || {};
+
+    console.log(`🔧 Stress text input: step="${state.step}", text="${text}"`);
+
+    // CRITICAL FIX: Handle grade input
+    if (state.step === 'ask_grade') {
+      const lowerText = text.toLowerCase().trim();
+
+      if (['10', '11', 'varsity'].includes(lowerText)) {
+        // Update user grade
+        await updateUser(user.id, { grade: lowerText });
+
+        // Move to stress level
+        session.session_state = { step: 'ask_stress_level' };
+        await saveSession(session);
+        await markUserInStressFlow(user.id, session.id, 'stress_level');
+
+        console.log(`✅ Grade set to ${lowerText}, moving to stress level`);
+        return generateStressLevelPrompt();
+      } else {
+        return `Please choose 10, 11, or varsity for your grade. 🎓`;
+      }
+    }
 
     if (state.step === 'ask_exam_date') {
       const lowerText = text.toLowerCase().trim();
@@ -155,6 +162,7 @@ export const stressHandler = {
         session.exam_hours_away = null;
         session.session_state = { step: 'show_plan_short' };
         await saveSession(session);
+        await updateUser(user.id, { current_menu: 'stress_plan' });
         return await generateShortPlan(session);
       }
 
@@ -167,6 +175,7 @@ export const stressHandler = {
         // Decide on plan type
         session.session_state = { step: 'plan_decision' };
         await saveSession(session);
+        await updateUser(user.id, { current_menu: 'stress_plan_decision' });
 
         if (session.exam_hours_away > 3) {
           return MESSAGES.STRESS.PLAN_OFFER_LONG;
@@ -189,6 +198,7 @@ export const stressHandler = {
         session.plan_opt_in = true;
         session.session_state = { step: 'show_plan_long' };
         await saveSession(session);
+        await updateUser(user.id, { current_menu: 'stress_plan' });
 
         return await generateLongPlan(session);
       } else {
@@ -199,7 +209,7 @@ export const stressHandler = {
     return `I didn't catch that. Type "menu" to start over. 🌱`;
   },
 
-  // Start lesson with practice
+  // Rest of the handler methods remain the same...
   async startLesson(user, session) {
     const topic = session.current_topic || 'calculus';
 
@@ -212,7 +222,6 @@ export const stressHandler = {
     return lessonContent;
   },
 
-  // Handle lesson actions
   async handleLessonAction(user, action) {
     const session = await getOrCreateActiveStressSession(user.id);
 
@@ -235,11 +244,9 @@ export const stressHandler = {
     return `Pick 1, 2, or 3 from the lesson options. ✨`;
   },
 
-  // Start gentle practice (3 questions internally)
   async startGentlePractice(user, session) {
     const topic = session.current_topic || 'calculus';
 
-    // Get easy question
     const question = await questionService.getQuestionByTopic(user, topic, {
       subject: 'math',
       difficulty: 'easy',
@@ -250,11 +257,9 @@ export const stressHandler = {
       return `No practice questions available right now. Let's try again later. 🌱`;
     }
 
-    // Set up practice session
     await questionService.serveQuestionToUser(user.id, question.id);
     await updateUser(user.id, { current_menu: 'practice_active' });
 
-    // Initialize practice tracking in session
     session.session_state = {
       ...session.session_state,
       practice_active: true,
@@ -267,7 +272,6 @@ export const stressHandler = {
     return `${MESSAGES.PRACTICE.START_PROMPT}\n\n${formatQuestion(question)}`;
   },
 
-  // Handle practice answers
   async handlePracticeAnswer(user, answerLetter) {
     const session = await getOrCreateActiveStressSession(user.id);
     const state = session.session_state || {};
@@ -276,33 +280,27 @@ export const stressHandler = {
       return `Type "practice" to start practicing! 🧮`;
     }
 
-    // Get and check answer
     const { question, correct } = await fetchQuestionAndCheck(
       user.current_question_id,
       answerLetter
     );
 
-    // Record response
     await questionService.recordUserResponse(user.id, question.id, answerLetter, correct, null);
 
-    // Generate feedback
     const feedback = correct
       ? `${MESSAGES.FEEDBACK.CORRECT_SIMPLE} You're building confidence step by step. 🌱`
       : `${MESSAGES.FEEDBACK.INCORRECT_SIMPLE} Let's keep going gently. ✨`;
 
-    // Update practice progress
     const questionsCompleted = state.questions_in_set || 1;
     const maxQuestions = state.max_questions || 3;
 
     if (questionsCompleted >= maxQuestions) {
-      // Practice set complete
       session.session_state.practice_active = false;
       await saveSession(session);
       await updateUser(user.id, { current_menu: 'practice_continue', current_question_id: null });
 
       return `${feedback}\n\n✅ Nice work. You completed a gentle practice set.\n\n${MESSAGES.PRACTICE.CONTINUE_MENU}`;
     } else {
-      // Get next question
       const nextQuestion = await getNextPracticeQuestion(user, session);
       if (!nextQuestion) {
         session.session_state.practice_active = false;
@@ -320,7 +318,6 @@ export const stressHandler = {
     }
   },
 
-  // Handle practice continue menu
   async handlePracticeContinue(user, action) {
     const session = await getOrCreateActiveStressSession(user.id);
 
@@ -352,11 +349,11 @@ export const stressHandler = {
   }
 };
 
-// Helper functions
+// Helper functions (FIXED)
 async function getOrCreateActiveStressSession(userId) {
   return await executeQuery(async (supabase) => {
     const { data: existing } = await supabase
-      .from('panic_sessions') // Keep table name for backward compatibility
+      .from('panic_sessions')
       .select('*')
       .eq('user_id', userId)
       .is('ended_at', null)
@@ -370,7 +367,7 @@ async function getOrCreateActiveStressSession(userId) {
       .from('panic_sessions')
       .insert({
         user_id: userId,
-        panic_level: 3, // Default stress level
+        panic_level: 3,
         subject: 'math',
         start_topic: 'calculus',
         session_state: { step: 'ask_stress_level' }
@@ -399,10 +396,25 @@ async function saveSession(session) {
   });
 }
 
-async function markUserInStressFlow(userId, sessionId) {
+// CRITICAL FIX: Enhanced user state management
+async function markUserInStressFlow(userId, sessionId, step) {
+  const menuMap = {
+    ask_grade: 'stress_grade',
+    stress_level: 'stress_level',
+    ask_subject: 'stress_subject'
+  };
+
   await updateUser(userId, {
-    current_menu: 'stress_level',
-    panic_session_id: sessionId, // Keep field name for compatibility
+    current_menu: menuMap[step] || 'stress_level',
+    panic_session_id: sessionId,
+    expecting_input_type: step === 'ask_grade' ? 'grade' : null,
+    last_active_at: new Date().toISOString()
+  });
+}
+
+async function markUserExpectingInput(userId, inputType) {
+  await updateUser(userId, {
+    expecting_input_type: inputType,
     last_active_at: new Date().toISOString()
   });
 }
@@ -412,6 +424,7 @@ async function clearStressState(userId) {
     current_menu: 'welcome',
     panic_session_id: null,
     current_question_id: null,
+    expecting_input_type: null,
     last_active_at: new Date().toISOString()
   });
 }
@@ -526,9 +539,9 @@ async function getNextPracticeQuestion(user, session) {
 
 async function createTonightReminder(userId, session) {
   const tonight = new Date();
-  tonight.setHours(19, 0, 0, 0); // 7 PM
+  tonight.setHours(19, 0, 0, 0);
   if (tonight <= new Date()) {
-    tonight.setDate(tonight.getDate() + 1); // Tomorrow if already past 7 PM
+    tonight.setDate(tonight.getDate() + 1);
   }
 
   try {
@@ -546,11 +559,9 @@ async function createTonightReminder(userId, session) {
 }
 
 function parseDateString(dateStr) {
-  // Simple date parsing - can be enhanced
   try {
     const normalized = dateStr.toLowerCase().replace(/\s+/g, ' ').trim();
 
-    // Handle "tomorrow" and "today"
     if (normalized.includes('tomorrow')) {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -561,7 +572,6 @@ function parseDateString(dateStr) {
       return new Date();
     }
 
-    // Try to parse as date
     const parsed = new Date(dateStr);
     if (!isNaN(parsed.getTime()) && parsed > new Date()) {
       return parsed;
