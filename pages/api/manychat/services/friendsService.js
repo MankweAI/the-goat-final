@@ -59,6 +59,7 @@ export class FriendsService {
     });
   }
 
+  // Rest of the methods remain the same...
   async getUserFriends(userId) {
     return executeQuery(async (supabase) => {
       const { data: friendships, error } = await supabase
@@ -128,4 +129,3 @@ export class FriendsService {
 }
 
 export const friendsService = new FriendsService();
-

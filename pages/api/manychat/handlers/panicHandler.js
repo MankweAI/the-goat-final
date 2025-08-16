@@ -1,5 +1,5 @@
 /**
- * Panic Button Handler (Maths-only MVP)
+ * Panic Button Handler (Maths-only MVP) - FIXED
  * Flow: triage (level -> topic) -> plan -> micro-module -> 3Q burst -> momentum menu
  * Data: persists to panic_sessions; uses users.current_menu = 'panic'
  */
@@ -27,7 +27,7 @@ export const panicHandler = {
 
     return (
       `🚨 PANIC MODE (Maths only)\n` +
-      `Sharp, I’ve got you. Let’s calm the nerves and score quick wins.\n\n` +
+      `Sharp, I've got you. Let's calm the nerves and score quick wins.\n\n` +
       `How high is your panic right now? (1-5)\n\n` +
       `1) Mild\n2) Manageable\n3) Elevated\n4) High\n5) Severe`
     );
@@ -105,14 +105,14 @@ export const panicHandler = {
       if (choiceNumber === 3) {
         await endSession(session.id);
         await clearPanicState(user.id);
-        return `Okay, we’ll pause here. Type "panic" anytime to jump back in.`;
+        return `Okay, we'll pause here. Type "panic" anytime to jump back in.`;
       }
       return `Choose 1) Start 3Q burst 2) Extra example 3) Cancel`;
     }
 
     if (step === 'burst') {
       // In case they press numbers unexpectedly during burst, ignore and remind
-      return `We’re mid-burst. Answer with A, B, C, or D.`;
+      return `We're mid-burst. Answer with A, B, C, or D.`;
     }
 
     if (step === 'momentum_menu') {
@@ -138,13 +138,13 @@ export const panicHandler = {
         await saveSession(session);
         await endSession(session.id);
         await clearPanicState(user.id);
-        return `Lekker, I’ll remind you this evening. You’ve got this. 🔔`;
+        return `Lekker, I'll remind you this evening. You've got this. 🔔`;
       }
       return `Pick 1) Continue 2) Switch topic 3) Break 4) Reminder`;
     }
 
     // Default fallback
-    return `Eish, I didn’t catch that. Use the numbered options above.`;
+    return `Eish, I didn't catch that. Use the numbered options above.`;
   },
 
   // Start or continue a 3-question burst
@@ -290,11 +290,12 @@ async function getOrCreateActivePanicSession(userId) {
 
     if (existing) return existing;
 
-    // Create new
+    // Create new - FIX: Set panic_level to minimum valid value
     const { data: created, error } = await supabase
       .from('panic_sessions')
       .insert({
         user_id: userId,
+        panic_level: 3, // FIX: Default valid value (was missing)
         subject: 'math',
         start_topic: 'unknown',
         session_state: { step: 'ask_level' }
@@ -312,7 +313,7 @@ async function saveSession(session) {
     const { error } = await supabase
       .from('panic_sessions')
       .update({
-        panic_level: session.panic_level ?? null,
+        panic_level: session.panic_level ?? 3, // FIX: Ensure valid panic_level
         subject: session.subject || 'math',
         start_topic: session.start_topic || 'unknown',
         burst_score_1: session.burst_score_1 ?? null,

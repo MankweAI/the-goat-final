@@ -422,8 +422,9 @@ async function handleReportCommand(user) {
 async function handleFriendsCommand(user, command) {
   switch (command.action) {
     case 'add_user':
-      // Align with friendsService method name
-      return await friendsService.addFriendByUsername(user.id, command.target);
+      // FIX: Extract message from the result
+      const result = await friendsService.addFriendByUsername(user.id, command.target);
+      return result.message || result;
     default:
       return await menuHandler.showFriendsMenu(user);
   }
