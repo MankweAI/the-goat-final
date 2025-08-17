@@ -2,6 +2,7 @@
  * The GOAT - Main Webhook Handler (Enhanced MVP)
  * Date: 2025-08-17 12:37:33 UTC
  * CRITICAL FIX: Added missing exam prep plan action handling
+ * DEBUG FIX: Added missing import for isExpectingTextInput
  */
 
 import { findOrCreateUser, updateUserActivity, updateUser } from './services/userService.js';
@@ -168,7 +169,7 @@ export default async function handler(req, res) {
         break;
 
       case 'invalid_answer':
-        reply = safeCommand.error || CONSTANTS.MESSAGES.ERRORS.INVALID_ANSWER;
+        reply = safeCommand.error || MESSAGES.ERRORS.INVALID_ANSWER;
         break;
 
       // ===== UTILITIES =====
@@ -286,6 +287,7 @@ function generateHelpMessage(user) {
   );
 }
 
+// DEBUG FIX: Added the missing isExpectingTextInput function
 function isExpectingTextInput(currentMenu) {
   const textInputMenus = [
     'exam_prep_grade',
