@@ -1,10 +1,7 @@
 /**
- * Enhanced Command Parser - FIXED Exam Prep Plan Menu Bug + Date Input Detection
- * Date: 2025-08-17 15:36:12 UTC
- * CRITICAL FIXES:
- * - Added missing exam_prep_plan and exam_prep_plan_decision menu cases
- * - Fixed text input detection for exam_prep_exam_date
- * - Added exam_lesson menu support
+ * Enhanced Command Parser - FIXED Context Menu Commands
+ * Date: 2025-08-17 13:24:35 UTC
+ * CRITICAL FIXES: Removed misleading subject options, fixed context menu commands
  */
 
 import { CONSTANTS } from '../config/constants.js';
@@ -70,7 +67,7 @@ export function parseCommand(input, context = {}) {
     };
   }
 
-  // ✅ PRIORITY 4: Menu navigation
+  // ✅ PRIORITY 4: Menu navigation  
   if (context.current_menu) {
     const menuResult = parseMenuInput(originalInput, context.current_menu);
     if (menuResult.isValid) {
@@ -100,8 +97,8 @@ export function parseCommand(input, context = {}) {
 
   // ✅ PRIORITY 5: Fallback
   console.log(`⚠️ Unrecognized: "${trimmed}"`);
-  return {
-    type: 'unrecognized',
+  return { 
+    type: 'unrecognized', 
     originalInput,
     menuChoice: null,
     action: null,
@@ -111,177 +108,257 @@ export function parseCommand(input, context = {}) {
   };
 }
 
-// FIXED: Enhanced text input context detection
+// Text input context detection
 function isTextInputContext(currentMenu) {
   const textInputMenus = [
     'exam_prep_grade',
-    'exam_prep_exam_date', // CRITICAL: Added this missing menu
-    'exam_prep_problems',
-    'exam_prep_time',
     'homework_grade',
     'homework_confusion',
-    'stress_exam_date'
+    'exam_prep_problems',  // CRITICAL: Problem articulation
+    'exam_prep_followup',  // NEW: Follow-up questions
+    'exam_prep_exam_date',
+    'exam_prep_time'
   ];
-
+  
   return textInputMenus.includes(currentMenu);
 }
 
-function parseAnswerInput(input) {
-  const cleaned = input.trim().toUpperCase();
-
-  if (['A', 'B', 'C', 'D'].includes(cleaned)) {
-    return { isValid: true, answer: cleaned };
-  }
-
-  if (cleaned.length === 1 && /[A-Z]/.test(cleaned)) {
-    return { isInvalid: true, error: 'Only A, B, C, or D are valid answers' };
-  }
-
-  return { isValid: false, isInvalid: false };
-}
-
+// Global commands
 function parseGlobalCommands(trimmed, originalInput) {
-  // Help and menu commands
-  if (['help', 'menu', 'start', 'back'].includes(trimmed)) {
-    return { type: 'welcome_menu', action: trimmed, originalInput };
-  }
-
-  // Direct flow triggers
-  if (['practice', 'question', 'quiz'].includes(trimmed)) {
-    return { type: CONSTANTS.COMMAND_TYPES.PRACTICE, action: 'start', originalInput };
-  }
-
-  if (['exam', 'test', 'panic', 'stress'].includes(trimmed)) {
+  if (['exam', 'test', 'scared', 'prep'].includes(trimmed)) {
     return { type: CONSTANTS.COMMAND_TYPES.EXAM_PREP, action: 'start', originalInput };
   }
 
-  if (['homework', 'hw', 'help me'].includes(trimmed)) {
+  if (['homework', 'hw', 'assignment'].includes(trimmed)) {
     return { type: CONSTANTS.COMMAND_TYPES.HOMEWORK, action: 'start', originalInput };
+  }
+
+  if (['practice', 'question', 'next', 'q'].includes(trimmed)) {
+    return { type: CONSTANTS.COMMAND_TYPES.PRACTICE, action: 'start', originalInput };
+  }
+
+  if (['menu', 'main', 'home', 'start'].includes(trimmed)) {
+    return { type: 'welcome_menu', action: 'show', originalInput };
+  }
+
+  if (['help', '?', 'info'].includes(trimmed)) {
+    return { type: CONSTANTS.COMMAND_TYPES.HELP, action: 'show', originalInput };
+  }
+
+  if (['panic', 'stressed'].includes(trimmed)) {
+    return { type: CONSTANTS.COMMAND_TYPES.EXAM_PREP, action: 'start', originalInput };
   }
 
   return { type: 'unrecognized', originalInput };
 }
 
+// Menu input parsing
 function parseMenuInput(input, currentMenu) {
-  const choice = parseInt(input.trim());
+  const number = parseInt(input.trim());
 
-  console.log(`🎯 Parsing menu input: choice=${choice}, menu=${currentMenu}`);
-
-  switch (currentMenu) {
-    case 'welcome':
-      if (choice >= 1 && choice <= 3) {
-        const types = [
-          CONSTANTS.COMMAND_TYPES.EXAM_PREP,
-          CONSTANTS.COMMAND_TYPES.HOMEWORK,
-          CONSTANTS.COMMAND_TYPES.PRACTICE
-        ];
-        return {
-          isValid: true,
-          command: { type: types[choice - 1], action: 'start', menuChoice: choice }
-        };
-      }
-      return { isInvalid: true, validRange: '1-3' };
-
-    case 'exam_prep_subject':
-      if (choice >= 1 && choice <= 4) {
-        return {
-          isValid: true,
-          command: { type: 'exam_prep_subject', menuChoice: choice }
-        };
-      }
-      return { isInvalid: true, validRange: '1-4' };
-
-    // CRITICAL FIX: Added missing exam_prep_plan menu
-    case 'exam_prep_plan':
-      if (choice >= 1 && choice <= 3) {
-        const actions = ['begin_review', 'switch_topic', 'main_menu'];
-        return {
-          isValid: true,
-          command: {
-            type: 'exam_prep_plan_action',
-            action: actions[choice - 1],
-            menuChoice: choice
-          }
-        };
-      }
-      return { isInvalid: true, validRange: '1-3' };
-
-    // CRITICAL FIX: Added exam lesson menu
-    case 'exam_lesson':
-      if (choice >= 1 && choice <= 3) {
-        return {
-          isValid: true,
-          command: {
-            type: 'exam_lesson_menu',
-            menuChoice: choice
-          }
-        };
-      }
-      return { isInvalid: true, validRange: '1-3' };
-
-    case 'homework_subject':
-      if (choice >= 1 && choice <= 4) {
-        return {
-          isValid: true,
-          command: { type: 'homework_subject', menuChoice: choice }
-        };
-      }
-      return { isInvalid: true, validRange: '1-4' };
-
-    case 'homework_lesson':
-      if (choice >= 1 && choice <= 3) {
-        return {
-          isValid: true,
-          command: { type: 'homework_lesson_menu', menuChoice: choice }
-        };
-      }
-      return { isInvalid: true, validRange: '1-3' };
-
-    case 'practice_active':
-      // This should be handled by answer parsing, not menu parsing
-      return { isInvalid: false };
-
-    case 'practice_continue':
-      if (choice >= 1 && choice <= 3) {
-        const actions = ['continue', 'switch_topic', 'short_break'];
-        return {
-          isValid: true,
-          command: {
-            type: 'practice_continue',
-            action: actions[choice - 1],
-            menuChoice: choice
-          }
-        };
-      }
-      return { isInvalid: true, validRange: '1-3' };
-
-    case 'stress_subject':
-      if (choice >= 1 && choice <= 4) {
-        return {
-          isValid: true,
-          command: { type: 'stress_subject', menuChoice: choice }
-        };
-      }
-      return { isInvalid: true, validRange: '1-4' };
-
-    case 'stress_level':
-      if (choice >= 1 && choice <= 4) {
-        return {
-          isValid: true,
-          command: { type: 'stress_level', menuChoice: choice }
-        };
-      }
-      return { isInvalid: true, validRange: '1-4' };
-
-    default:
-      console.warn(`⚠️ Unknown menu: ${currentMenu}`);
-      return { isInvalid: false };
+  if (isNaN(number) || number <= 0) {
+    return {
+      isInvalid: true,
+      validRange: getMenuRange(currentMenu),
+      reason: 'not_a_number'
+    };
   }
+
+  // Welcome menu (3 options)
+  if (currentMenu === 'welcome') {
+    if (number >= 1 && number <= 3) {
+      const actions = {
+        1: { type: CONSTANTS.COMMAND_TYPES.EXAM_PREP, action: 'start' },
+        2: { type: CONSTANTS.COMMAND_TYPES.HOMEWORK, action: 'start' }, 
+        3: { type: CONSTANTS.COMMAND_TYPES.PRACTICE, action: 'start' }
+      };
+      return {
+        isValid: true,
+        command: { 
+          ...actions[number], 
+          originalInput: input,
+          menuChoice: number
+        }
+      };
+    }
+    return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
+  }
+
+  // REMOVED: exam_prep_subject menu (no longer misleading users)
+
+  // Exam prep plan menu
+  if (currentMenu === 'exam_prep_plan') {
+    if (number >= 1 && number <= 3) {
+      const actions = { 
+        1: 'begin_review', 
+        2: 'switch_topic', 
+        3: 'main_menu' 
+      };
+      return {
+        isValid: true,
+        command: { 
+          type: 'exam_prep_plan_action', 
+          action: actions[number],
+          originalInput: input,
+          menuChoice: number
+        }
+      };
+    }
+    return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
+  }
+
+  // Exam prep plan decision menu
+  if (currentMenu === 'exam_prep_plan_decision') {
+    if (number >= 1 && number <= 2) {
+      const actions = { 1: 'yes_to_plan', 2: 'no_to_plan' };
+      return {
+        isValid: true,
+        command: { 
+          type: 'exam_prep_plan_decision_select', 
+          decision: actions[number],
+          originalInput: input,
+          menuChoice: number
+        }
+      };
+    }
+    return { isInvalid: true, validRange: '1-2', reason: 'out_of_range' };
+  }
+
+  // Homework subject menu (simplified)
+  if (currentMenu === 'homework_subject') {
+    if (number === 1) { // Only option 1 (yes) is valid
+      return {
+        isValid: true,
+        command: { 
+          type: 'homework_subject_select', 
+          subject: 'math',
+          originalInput: input,
+          menuChoice: number
+        }
+      };
+    }
+    return { isInvalid: true, validRange: 'Type "yes"', reason: 'out_of_range' };
+  }
+
+  // Homework problem type menu
+  if (currentMenu === 'homework_problem_type') {
+    if (number >= 1 && number <= 6) {
+      const problemTypes = { 
+        1: 'equations', 2: 'word_problems', 3: 'graphs_functions',
+        4: 'calculus', 5: 'trigonometry', 6: 'other' 
+      };
+      return {
+        isValid: true,
+        command: { 
+          type: 'homework_problem_type_select', 
+          problem_type: problemTypes[number],
+          originalInput: input,
+          menuChoice: number
+        }
+      };
+    }
+    return { isInvalid: true, validRange: '1-6', reason: 'out_of_range' };
+  }
+
+  // Homework method menu
+  if (currentMenu === 'homework_method') {
+    if (number >= 1 && number <= 3) {
+      const actions = { 1: 'practice', 2: 'another_example', 3: 'back_to_homework' };
+      return {
+        isValid: true,
+        command: { 
+          type: 'homework_method_action', 
+          action: actions[number],
+          originalInput: input,
+          menuChoice: number
+        }
+      };
+    }
+    return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
+  }
+
+  // Lesson menu
+  if (currentMenu === 'lesson') {
+    if (number >= 1 && number <= 3) {
+      const actions = { 1: 'start_practice', 2: 'another_example', 3: 'back_to_exam_prep' };
+      return {
+        isValid: true,
+        command: { 
+          type: 'lesson_action', 
+          action: actions[number],
+          originalInput: input,
+          menuChoice: number
+        }
+      };
+    }
+    return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
+  }
+
+  // FIXED: Practice continue menu with correct context
+  if (currentMenu === 'practice_continue') {
+    if (number >= 1 && number <= 4) {
+      // FIXED: Context-appropriate actions
+      const actions = { 
+        1: 'continue', 
+        2: 'switch_topic', 
+        3: 'back_to_main',  // FIXED: No more "back to homework" in exam prep
+        4: 'take_break' 
+      };
+      return {
+        isValid: true,
+        command: { 
+          type: 'practice_continue_select', 
+          action: actions[number],
+          originalInput: input,
+          menuChoice: number
+        }
+      };
+    }
+    return { isInvalid: true, validRange: '1-4', reason: 'out_of_range' };
+  }
+
+  // Unknown menu
+  console.warn(`⚠️ Unknown menu type: ${currentMenu}`);
+  return {
+    isInvalid: true,
+    validRange: getMenuRange(currentMenu),
+    reason: 'unknown_menu'
+  };
 }
 
-// Helper to check if user is expecting text input
-function isExpectingTextInput(currentMenu) {
-  return isTextInputContext(currentMenu);
+function getMenuRange(menu) {
+  const ranges = {
+    'welcome': '1-3',
+    'exam_prep_plan': '1-3',
+    'exam_prep_plan_decision': '1-2',
+    'homework_subject': 'Type "yes"',
+    'homework_problem_type': '1-6',
+    'homework_method': '1-3',
+    'lesson': '1-3',
+    'practice_continue': '1-4'
+  };
+  return ranges[menu] || '1-5';
 }
 
-export { isExpectingTextInput };
+function parseAnswerInput(input) {
+  const trimmed = input.trim().toUpperCase();
+  const validAnswers = CONSTANTS.VALID_ANSWERS;
+
+  if (validAnswers.includes(trimmed)) {
+    return { isValid: true, answer: trimmed };
+  }
+
+  const patterns = [/^([ABCD])\)$/, /^ANSWER\s*([ABCD])$/i, /^([ABCD])\.$/];
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern);
+    if (match && validAnswers.includes(match[1])) {
+      return { isValid: true, answer: match[1] };
+    }
+  }
+
+  return {
+    isInvalid: true,
+    error: CONSTANTS.MESSAGES.ERRORS.INVALID_ANSWER
+  };
+}
