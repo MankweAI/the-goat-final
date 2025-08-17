@@ -1,12 +1,10 @@
 /**
- * Exam Prep Handler - COMPLETE REWRITE with All Bug Fixes
- * Date: 2025-08-17 15:36:12 UTC
+ * Exam Prep Handler - FIXED Database Table References
+ * Date: 2025-08-17 19:47:56 UTC
  * CRITICAL FIXES:
- * - Enhanced date parsing with dateParser integration
- * - Fixed topic switching functionality
- * - Added proper plan action handling
- * - Context-aware lesson menus
- * - Comprehensive state management
+ * - Updated all panic_sessions references to exam_prep_sessions
+ * - Fixed session creation and management
+ * - Updated user field references
  */
 
 import { executeQuery } from '../config/database.js';
@@ -19,31 +17,31 @@ import MenuRenderer from '../utils/menuRenderer.js';
 
 export const examPrepHandler = {
   // Entry point - simplified flow
-    async startExamPrep(user) {
-        try {
-                console.log(`📅 Starting exam prep for user ${user.id}`);
+  async startExamPrep(user) {
+    try {
+      console.log(`📅 Starting exam prep for user ${user.id}`);
 
-                const session = await getOrCreateExamPrepSession(user.id);
+      const session = await getOrCreateExamPrepSession(user.id);
 
-                // Check if we have grade
-                if (!user.grade) {
-                  session.session_state = { step: 'ask_grade' };
-                  await saveSession(session);
-                  await markUserInExamPrepFlow(user.id, session.id, 'exam_prep_grade');
+      // Check if we have grade
+      if (!user.grade) {
+        session.session_state = { step: 'ask_grade' };
+        await saveSession(session);
+        await markUserInExamPrepFlow(user.id, session.id, 'exam_prep_grade');
 
-                  return MESSAGES.WELCOME.GRADE_PROMPT;
-                }
+        return MESSAGES.WELCOME.GRADE_PROMPT;
+      }
 
-                // Go straight to subject selection
-                session.session_state = { step: 'ask_subject' };
-                await saveSession(session);
-                await markUserInExamPrepFlow(user.id, session.id, 'exam_prep_subject');
+      // Go straight to subject selection
+      session.session_state = { step: 'ask_subject' };
+      await saveSession(session);
+      await markUserInExamPrepFlow(user.id, session.id, 'exam_prep_subject');
 
-                return `${MESSAGES.EXAM_PREP.VALIDATION_RESPONSE}\n\n${MESSAGES.EXAM_PREP.SUBJECT_PROMPT}`;
-        } catch (error) {
-            console.error('❌ Exam prep setup failed:', error);
-            return 'Eish, something went wrong setting up exam prep. Try again in a moment! 🫶';
-        }
+      return `${MESSAGES.EXAM_PREP.VALIDATION_RESPONSE}\n\n${MESSAGES.EXAM_PREP.SUBJECT_PROMPT}`;
+    } catch (error) {
+      console.error('❌ Exam prep setup failed:', error);
+      return 'Eish, something went wrong setting up exam prep. Try again in a moment! 🫶';
+    }
   },
 
   // Handle menu choices in exam prep flow
@@ -200,6 +198,7 @@ export const examPrepHandler = {
       case 'main_menu':
         await updateUser(user.id, {
           current_menu: 'welcome',
+          exam_prep_session_id: null // FIXED: Updated field name
         });
         return MESSAGES.WELCOME.MAIN_MENU;
 
@@ -373,13 +372,13 @@ export const examPrepHandler = {
   }
 };
 
-// Helper functions
+// Helper functions - FIXED: Updated table references
 
 async function getOrCreateExamPrepSession(userId) {
   return executeQuery(async (supabase) => {
-    // Check for existing active session
+    // Check for existing active session - FIXED: Updated table name
     let { data: session, error: fetchError } = await supabase
-      .from('panic_sessions')
+      .from('exam_prep_sessions') // FIXED: Changed from panic_sessions
       .select('*')
       .eq('user_id', userId)
       .eq('status', 'active')
@@ -387,12 +386,11 @@ async function getOrCreateExamPrepSession(userId) {
 
     if (session) return session;
 
-    // Create new session if none exists
+    // Create new session if none exists - FIXED: Updated table name and fields
     const { data: newSession, error: createError } = await supabase
-      .from('panic_sessions')
+      .from('exam_prep_sessions') // FIXED: Changed from panic_sessions
       .insert({
         user_id: userId,
-        session_type: 'exam_prep',
         status: 'active',
         session_state: { step: 'ask_subject' },
         created_at: new Date().toISOString()
@@ -412,7 +410,7 @@ async function getOrCreateExamPrepSession(userId) {
 async function saveSession(session) {
   return executeQuery(async (supabase) => {
     const { data } = await supabase
-      .from('panic_sessions')
+      .from('exam_prep_sessions') // FIXED: Changed from panic_sessions
       .update({
         session_state: session.session_state,
         focus_subject: session.focus_subject,
@@ -435,6 +433,7 @@ async function saveSession(session) {
 async function markUserInExamPrepFlow(userId, sessionId, currentMenu) {
   await updateUser(userId, {
     current_menu: currentMenu,
+    exam_prep_session_id: sessionId, // FIXED: Changed from panic_session_id
     last_active_at: new Date().toISOString()
   });
 }
