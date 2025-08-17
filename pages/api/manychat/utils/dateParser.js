@@ -2,12 +2,7 @@
  * Enhanced Date Parser for Natural Language Input
  * Supports: "22 Aug 7pm", "tomorrow 2pm", "next Friday 9:30", "skip"
  * Timezone: Africa/Johannesburg (UTC+2)
-<<<<<<< HEAD
- * Date: 2025-08-17 17:13:23 UTC
- * MINIMAL VERSION - Only what's needed for date parsing fix
-=======
  * Date: 2025-08-17 15:36:12 UTC
->>>>>>> safeHouse
  */
 
 export class DateParser {
@@ -71,7 +66,7 @@ export class DateParser {
       }
 
       // Convert to Africa/Johannesburg timezone
-      const examDate = parsedDate;
+      const examDate = this.toJohannesburgTime(parsedDate);
       const now = new Date();
       const hoursAway = Math.round((examDate - now) / (1000 * 60 * 60));
 
@@ -189,6 +184,7 @@ export class DateParser {
 
     const date = new Date(currentYear, month, day);
 
+    // If date is in the past, assume next year
     if (date < new Date()) {
       date.setFullYear(currentYear + 1);
     }
@@ -265,6 +261,7 @@ export class DateParser {
     if (input.includes('today') || input.includes('tonight')) {
       // Use today
     } else {
+      // Assume today if time is in future, otherwise tomorrow
       const timeMatch = input.match(/(\d{1,2})(:\d{2})?\s*(am|pm)/i);
       if (timeMatch) {
         let hours = parseInt(timeMatch[1]);
@@ -277,7 +274,7 @@ export class DateParser {
         testDate.setHours(hours, 0, 0, 0);
 
         if (testDate <= new Date()) {
-          date.setDate(date.getDate() + 1);
+          date.setDate(date.getDate() + 1); // Tomorrow
         }
       }
     }
@@ -333,7 +330,6 @@ export class DateParser {
     const offsetMs = 2 * 60 * 60 * 1000; // UTC+2
     return new Date(utcTime);
   }
-
 
   formatConfirmation(date) {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

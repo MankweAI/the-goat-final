@@ -1,7 +1,10 @@
 /**
  * The GOAT Bot - Enhanced MVP Configuration
- * Updated: 2025-08-17 13:24:35 UTC
- * CRITICAL FIXES: Removed misleading subject options, updated messaging
+ * Updated: 2025-08-17 15:36:12 UTC
+ * CRITICAL FIXES:
+ * - Removed hardcoded "Back to homework" labels from lessons
+ * - Added context-aware menu support
+ * - Enhanced exam prep messaging
  */
 
 // Core messaging with calm, supportive tone
@@ -17,7 +20,7 @@ export const MESSAGES = {
   },
 
   WELCOME: {
-    // Streamlined menu - 3 core options
+    // New streamlined menu - 3 core options
     MAIN_MENU:
       `Welcome. I'm here to help you study with calm and clarity.\n\n` +
       `What do you need right now?\n\n` +
@@ -26,6 +29,7 @@ export const MESSAGES = {
       `3️⃣ 🧮 I need more practice\n\n` +
       `Just pick a number! ✨`,
 
+    // Contextual prompts when needed
     GRADE_PROMPT:
       `Which grade are you in?\n\n` +
       `📚 Options:\n` +
@@ -34,24 +38,22 @@ export const MESSAGES = {
       `Just type your grade! 🎓`,
 
     SUBJECT_PROMPT:
-      `I specialize in Maths for now. Other subjects coming soon! 📚\n\n` +
-      `Ready to start with Maths? Type "yes" to continue! 💪`
+      `Maths is ready now; other subjects coming soon.\n\n` +
+      `Start with Maths? Type "yes" to continue! 💪`
   },
 
-  // SIMPLIFIED: Exam prep support (no misleading subject options)
+  // Exam prep support (simplified - no stress level)
   EXAM_PREP: {
-    // REMOVED: Misleading subject selection entirely
-    EXAM_DATE_PROMPT:
-      `When is your exam/test?\n\n` +
-      `**Examples:**\n` +
-      `• "22 Aug 2pm"\n` +
-      `• "tomorrow 3pm"\n` +
-      `• "next Monday"\n` +
-      `• "in 3 days"\n\n` +
-      `If you're not sure, say "skip". ⏳`,
     SUBJECT_PROMPT:
-      `I specialize in Maths for now. Other subjects coming soon! 📚\n\n` +
-      `Ready to start with Maths? Type "yes" to continue! 💪`,
+      `Let's focus on one subject to start.\n\n` +
+      `Which subject needs attention?\n\n` +
+      `1️⃣ Mathematics\n` +
+      `2️⃣ Physics (Maths ready now)\n` +
+      `3️⃣ Chemistry (Maths ready now)\n` +
+      `4️⃣ Life Sciences (Maths ready now)`,
+
+    EXAM_DATE_PROMPT:
+      `When is your exam/test? (e.g., 22 Aug 7pm)\n\n` + `If you're not sure, say "skip". ⏳`,
 
     PLAN_OFFER_LONG:
       `I can send a short lesson + practice each day until then.\n\n` +
@@ -67,190 +69,138 @@ export const MESSAGES = {
     VALIDATION_RESPONSE: `I understand. Let's take this step by step together. 🌱`
   },
 
-  // Homework support with academic integrity
+  // Homework support messaging
   HOMEWORK: {
-    WELCOME_MESSAGE:
-      `📚 HOMEWORK HELPER ACTIVATED!\n\n` +
-      `I'll teach you the method so you can tackle your homework confidently.\n\n` +
-      `I specialize in Mathematics for now.\n\n` +
-      `Ready to start? Type "yes"! 💪`,
-
-    PROBLEM_TYPE_PROMPT:
-      `What type of math problems are in your homework?\n\n` +
-      `1️⃣ Equations (linear, quadratic)\n` +
-      `2️⃣ Word problems\n` +
-      `3️⃣ Graphs and functions\n` +
-      `4️⃣ Calculus (derivatives, integrals)\n` +
-      `5️⃣ Trigonometry\n` +
-      `6️⃣ Other/Not sure`,
+    SUBJECT_PROMPT:
+      `Which subject needs help?\n\n` +
+      `1️⃣ Mathematics\n` +
+      `2️⃣ Physics (Maths ready now)\n` +
+      `3️⃣ Chemistry (Maths ready now)\n` +
+      `4️⃣ Life Sciences (Maths ready now)`,
 
     CONFUSION_PROMPT:
-      `Don't send me your actual homework questions!\n\n` +
-      `Instead, tell me what part feels confusing:\n` +
-      `• Which step gets you stuck?\n` +
-      `• What method are you unsure about?\n` +
-      `• Where do you lose confidence?\n\n` +
-      `The more specific, the better I can help! 🧠`,
+      `Tell me what's confusing you.\n\n` +
+      `For example:\n` +
+      `• "I don't get how to solve quadratic equations"\n` +
+      `• "Word problems are hard to set up"\n` +
+      `• "I keep making calculation errors"\n\n` +
+      `What's your challenge? 🤔`,
 
-    ACADEMIC_INTEGRITY_REMINDER:
-      `🎯 REMEMBER: I teach methods, not answers!\n\n` +
-      `I'll show you how to approach problems like yours, then you apply the method to your actual homework.\n\n` +
-      `Ready to learn the approach?`,
-
-    METHOD_TEACHING_INTRO: `📘 Here's the method with similar examples:\n\n`,
-
-    PRACTICE_ENCOURAGEMENT:
-      `🎯 YOUR TURN: Use this method on your homework.\n\n` +
-      `Come back if you get stuck on the process (not the specific answer)!\n\n` +
-      `Need more practice first? Type "practice"! 💪`
+    VALIDATION_RESPONSE: `I hear you. Let's work through this together step by step. 🌱`
   },
 
-  LESSONS: {
-    CALCULUS_INTRO:
-      `📘 Calculus (First Principles) – Method Guide\n\n` +
-      `• Pattern: f'(x) = lim_{h→0} (f(x+h) − f(x)) / h\n` +
-      `• Steps: Expand → Simplify → Factor h → Take limit\n` +
-      `• Key: Go step-by-step, don't skip algebra\n\n` +
-      `Example method:\n` +
-      `For f(x) = x^2:\n` +
-      `1) f(x+h) = x^2 + 2xh + h^2\n` +
-      `2) f(x+h) − f(x) = 2xh + h^2\n` +
-      `3) Divide by h → 2x + h\n` +
-      `4) Limit as h→0 → 2x\n\n` +
-      `Worked example:\n` +
-      `f(x) = 3x^2 follows same pattern → 6x\n\n` +
-      `1️⃣ Try practice questions\n` +
-      `2️⃣ See another example\n` +
-      `3️⃣ Back to exam prep`,
-
-    TRIGONOMETRY_INTRO:
-      `📗 Trigonometry Identity – Method Guide\n\n` +
-      `• Core: sin²(x) + cos²(x) = 1\n` +
-      `• Strategy: Convert everything to sin and cos\n` +
-      `• Tip: Memorize special angles (30°, 45°, 60°)\n\n` +
-      `Method for simplifying:\n` +
-      `1) Use fundamental identity: sin² + cos² = 1\n` +
-      `2) Substitute: 1 − cos²(x) = sin²(x)\n` +
-      `3) Simplify fractions\n\n` +
-      `Example: (1 − cos²x)/sin x = sin²x / sin x = sin x\n\n` +
-      `1️⃣ Try practice questions\n` +
-      `2️⃣ See another example\n` +
-      `3️⃣ Back to exam prep`
-  },
-
-  FEEDBACK: {
-    CORRECT_SIMPLE: `Excellent! You're building solid understanding. ✅`,
-    INCORRECT_SIMPLE: `Not quite, but you're learning. That's how mastery builds. 🌱`,
-    BREATHING_CUE: `Take a breath. You've got this. 🫶`
-  },
-
+  // Practice messaging
   PRACTICE: {
-    START_PROMPT: `Let's practice the method with some questions. 🧮`,
     CONTINUE_MENU:
-      `What's next?\n\n` +
+      `What would you like to do next?\n\n` +
       `1️⃣ Continue practicing\n` +
       `2️⃣ Switch topic\n` +
-      `3️⃣ Back to main menu\n` +
-      `4️⃣ Take a break\n\n` +
-      `Pick a number! ✨`
+      `3️⃣ Take a short break`,
+
+    TOPIC_SWITCH_SUCCESS: `Topic switched! Here's your next question: 🔄`,
+
+    BREAK_MESSAGE:
+      `Take your time. Breathe.\n\n` +
+      `You're building knowledge step by step. 🌱\n\n` +
+      `Type "practice" when ready to continue.`
+  },
+
+  // Stress support (legacy)
+  STRESS: {
+    LEVEL_PROMPT:
+      `How stressed are you feeling right now?\n\n` +
+      `1️⃣ Completely overwhelmed 😰\n` +
+      `2️⃣ Very stressed 😟\n` +
+      `3️⃣ Somewhat worried 😐\n` +
+      `4️⃣ Just want to be prepared 😌`,
+
+    SUBJECT_PROMPT:
+      `Which subject is weighing on you most?\n\n` +
+      `1️⃣ Mathematics\n` +
+      `2️⃣ Physics\n` +
+      `3️⃣ Chemistry\n` +
+      `4️⃣ Life Sciences`,
+
+    EXAM_DATE_PROMPT:
+      `When is your exam? (e.g., 22 Aug 7pm)\n\n` + `If you're not sure, say "skip". ⏳`,
+
+    VALIDATION_HIGH: `I feel you. This is hard, but you're not alone. 💙`,
+    VALIDATION_LOW: `Smart to prepare early. You've got this! 💪`
   }
 };
 
 export const CONSTANTS = {
-  // Valid grades (unchanged)
+  // Command types
+  COMMAND_TYPES: {
+    ANSWER: 'answer',
+    EXAM_PREP: 'exam_prep',
+    HOMEWORK: 'homework',
+    PRACTICE: 'practice'
+  },
+
+  // Valid grades for the system
   VALID_GRADES: ['10', '11', 'varsity'],
 
-  // Subject focus (Maths-only for MVP)
-  VALID_SUBJECTS: ['math'],
-  SUBJECT_DISPLAY_NAMES: {
-    math: 'Mathematics'
-  },
-
-  // Math topics (unchanged)
-  MATH_TOPICS: {
-    calculus: { id: 1, name: 'calculus', display: 'Calculus' },
-    trigonometry: { id: 2, name: 'trigonometry', display: 'Trigonometry' },
-    algebra: { id: 3, name: 'algebra', display: 'Algebra' },
-    geometry: { id: 4, name: 'geometry', display: 'Geometry' },
-    statistics: { id: 5, name: 'statistics', display: 'Statistics' },
-    functions: { id: 6, name: 'functions', display: 'Functions' }
-  },
-
-  // Updated command types (removed confidence, added homework)
-  COMMAND_TYPES: {
-    EXAM_PREP: 'exam_prep',
-    HOMEWORK: 'homework',
-    PRACTICE: 'practice',
-    QUESTION: 'question',
-    ANSWER: 'answer',
-    HELP: 'help'
-  },
-
-  // Updated menu types
-  MENU_TYPES: {
-    WELCOME: 'welcome',
-    EXAM_PREP: 'exam_prep',
-    HOMEWORK: 'homework',
-    LESSON: 'lesson',
-    PRACTICE_ACTIVE: 'practice_active'
-  },
-
-  // Homework-specific constants
-  HOMEWORK_TYPES: {
-    EQUATIONS: 'equations',
-    WORD_PROBLEMS: 'word_problems',
-    GRAPHS: 'graphs_functions',
-    CALCULUS: 'calculus',
-    TRIGONOMETRY: 'trigonometry',
-    OTHER: 'other'
-  },
-
-  // Academic integrity safeguards
-  ACADEMIC_INTEGRITY: {
-    NO_DIRECT_ANSWERS: 'I teach methods, not answers',
-    NO_HOMEWORK_SOLVING: "Don't send your homework questions",
-    ENCOURAGE_LEARNING: 'Learn the method, then apply it yourself',
-    TRANSPARENCY: 'I help you understand, not complete assignments'
-  },
-
-  // Limits and constraints
-  MAX_RESPONSE_LENGTH: 1200,
-  SESSION_TIMEOUT_MINUTES: 30,
-
-  // Emojis
-  EMOJIS: {
-    BRAIN: '🧠',
-    GROWTH: '🌱',
-    SPARKLES: '✨',
-    CHECK: '✅',
-    CALENDAR: '📅',
-    HOMEWORK: '📚',
-    HEART_HANDS: '🫶',
-    MATH: '🧮'
-  },
-
-  // Answer validation
-  VALID_ANSWERS: ['A', 'B', 'C', 'D'],
-
-  // Include MESSAGES for backward compatibility
-  MESSAGES,
+  // Lesson content (without hardcoded menus)
   LESSONS: {
     CALCULUS_INTRO: {
       title: 'Calculus Introduction',
-      content: `Let's break down derivatives step by step.\n\nA derivative measures how fast something changes.\n\nThink of it like the speedometer in a car - it tells you how fast your position is changing at any moment.`
-      // Menu will be added dynamically by MenuRenderer
+      content: `Let's break down derivatives step by step.\n\nA derivative measures how fast something changes.\n\nThink of it like the speedometer in a car - it tells you how fast your position is changing at any moment.\n\n📊 Key concept: Rate of change\n🚗 Real example: Speed is the derivative of distance`,
+      topic: 'calculus'
     },
 
     TRIGONOMETRY_INTRO: {
       title: 'Trigonometry Basics',
-      content: `Trigonometry is about triangles and circles.\n\nSOH-CAH-TOA is your best friend:\n• Sin = Opposite/Hypotenuse\n• Cos = Adjacent/Hypotenuse\n• Tan = Opposite/Adjacent`
-      // Menu will be added dynamically by MenuRenderer
+      content: `Trigonometry is about triangles and circles.\n\nSOH-CAH-TOA is your best friend:\n\n📐 Sin = Opposite/Hypotenuse\n📐 Cos = Adjacent/Hypotenuse\n📐 Tan = Opposite/Adjacent\n\nRemember: Some Old Hippie Caught Another Hippie Tripping On Acid! 😄`,
+      topic: 'trigonometry'
+    },
+
+    ALGEBRA_INTRO: {
+      title: 'Algebra Fundamentals',
+      content: `Algebra is like solving puzzles with letters.\n\nThe golden rule: Whatever you do to one side, do to the other.\n\n⚖️ Keep the equation balanced\n🎯 Isolate the variable\n✅ Check your answer by substituting back`,
+      topic: 'algebra'
     }
   },
 
+  // Example content (without menus)
   EXAMPLES: {
-    CALCULUS_EXTRA: `🧮 Extra derivative example:\n\nFind d/dx of x³ + 2x:\n\n1️⃣ Use power rule: bring down exponent, reduce by 1\n2️⃣ d/dx(x³) = 3x²\n3️⃣ d/dx(2x) = 2\n4️⃣ Answer: 3x² + 2`,
+    CALCULUS_EXTRA: `🧮 Extra derivative example:\n\nFind d/dx of x³ + 2x:\n\n1️⃣ Use power rule: bring down exponent, reduce by 1\n2️⃣ d/dx(x³) = 3x²\n3️⃣ d/dx(2x) = 2\n4️⃣ Answer: 3x² + 2\n\n💡 Power rule: d/dx(xⁿ) = n·xⁿ⁻¹`,
 
-    TRIGONOMETRY_EXTRA: `📐 Extra trig example:\n\nFind sin(30°):\n\n1️⃣ Draw 30-60-90 triangle\n2️⃣ Sides are in ratio 1:√3:2\n3️⃣ sin(30°) = opposite/hypotenuse = 1/2\n4️⃣ Answer: 1/2 = 0.5`
+    TRIGONOMETRY_EXTRA: `📐 Extra trig example:\n\nFind sin(30°):\n\n1️⃣ Draw 30-60-90 triangle\n2️⃣ Sides are in ratio 1:√3:2\n3️⃣ sin(30°) = opposite/hypotenuse = 1/2\n4️⃣ Answer: 1/2 = 0.5\n\n💡 Special angles: 30°, 45°, 60° - memorize these!`,
+
+    ALGEBRA_EXTRA: `🎯 Extra algebra example:\n\nSolve: 2x + 5 = 13\n\n1️⃣ Subtract 5 from both sides: 2x = 8\n2️⃣ Divide both sides by 2: x = 4\n3️⃣ Check: 2(4) + 5 = 8 + 5 = 13 ✅\n\n💡 Always check your answer!`
+  },
+
+  // Topic configurations
+  TOPICS: {
+    CALCULUS: {
+      display_name: 'Calculus',
+      difficulty_levels: ['basic', 'intermediate', 'advanced'],
+      lesson_key: 'CALCULUS_INTRO',
+      example_key: 'CALCULUS_EXTRA'
+    },
+    TRIGONOMETRY: {
+      display_name: 'Trigonometry',
+      difficulty_levels: ['basic', 'intermediate', 'advanced'],
+      lesson_key: 'TRIGONOMETRY_INTRO',
+      example_key: 'TRIGONOMETRY_EXTRA'
+    },
+    ALGEBRA: {
+      display_name: 'Algebra',
+      difficulty_levels: ['basic', 'intermediate', 'advanced'],
+      lesson_key: 'ALGEBRA_INTRO',
+      example_key: 'ALGEBRA_EXTRA'
+    }
+  },
+
+  // Menu contexts for proper labeling
+  MENU_CONTEXTS: {
+    EXAM_PREP: 'exam',
+    HOMEWORK: 'homework',
+    PRACTICE: 'practice',
+    GENERAL: 'general'
   }
 };
+
+// Default exports
+export default { MESSAGES, CONSTANTS };

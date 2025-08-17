@@ -17,7 +17,6 @@ import { CONSTANTS, MESSAGES } from '../config/constants.js';
 import { dateParser } from '../utils/dateParser.js';
 import MenuRenderer from '../utils/menuRenderer.js';
 
-
 export const examPrepHandler = {
   // Entry point - simplified flow
   async startExamPrep(user) {
@@ -125,36 +124,43 @@ export const examPrepHandler = {
       return `Grade ${grade} noted! 📚\n\n${MESSAGES.EXAM_PREP.SUBJECT_PROMPT}`;
     }
 
-if (step === 'ask_exam_date' || user.current_menu === 'exam_prep_exam_date') {
-  // FIXED: Use enhanced date parser
-  const parseResult = dateParser.parseExamDate(text);
+    if (step === 'ask_exam_date' || user.current_menu === 'exam_prep_exam_date') {
+      // FIXED: Use enhanced date parser
+      const parseResult = dateParser.parseExamDate(text);
 
-  if (!parseResult.success) {
-    console.log(`❌ Date parsing failed for: "${text}"`);
-    return `${parseResult.message}\n\nTry again or type "skip" if you're not sure. ⏳`;
-  }
+      if (!parseResult.success) {
+        // Parsing failed - show helpful error
+        console.log(`❌ Date parsing failed for: "${text}"`);
+        return `${parseResult.message}\n\nTry again or type "skip" if you're not sure. ⏳`;
+      }
 
-  if (parseResult.isSkipped) {
-    session.exam_date = null;
-    session.exam_hours_away = null;
-    // Continue with your existing skip logic...
+      if (parseResult.isSkipped) {
+        // User skipped date
+        session.exam_date = null;
+        session.exam_hours_away = null;
+        session.session_state = { step: 'show_plan' };
+        await saveSession(session);
+        await updateUser(user.id, { current_menu: 'exam_prep_plan' });
 
-    console.log(`⏭️ User ${user.id} skipped exam date`);
-    return `${parseResult.message}\n\n${await this.showExamPlan(user, session)}`;
-  }
+        console.log(`⏭️ User ${user.id} skipped exam date`);
+        return `${parseResult.message}\n\n${await this.showExamPlan(user, session)}`;
+      }
 
-  // Successfully parsed date
-  session.exam_date = parseResult.date;
-  session.exam_hours_away = parseResult.hoursAway;
-  // Continue with your existing success logic...
+      // Successfully parsed date
+      session.exam_date = parseResult.date;
+      session.exam_hours_away = parseResult.hoursAway;
+      session.session_state = { step: 'show_plan' };
+      await saveSession(session);
+      await updateUser(user.id, { current_menu: 'exam_prep_plan' });
 
-  console.log(
-    `✅ Exam date set for user ${user.id}: ${parseResult.confirmation}, ${parseResult.hoursAway}h away`
-  );
+      console.log(
+        `✅ Exam date set for user ${user.id}: ${parseResult.confirmation}, ${parseResult.hoursAway}h away`
+      );
 
-  const confirmationMessage = `I understood: ${parseResult.confirmation}\n\n`;
-  return `${confirmationMessage}${await this.showExamPlan(user, session)}`;
-}
+      // Show confirmation and plan
+      const confirmationMessage = `I understood: ${parseResult.confirmation}\n\n`;
+      return `${confirmationMessage}${await this.showExamPlan(user, session)}`;
+    }
 
     if (step === 'ask_preferred_time') {
       // Handle time preference
