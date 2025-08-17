@@ -1,7 +1,7 @@
 /**
- * The GOAT - Main Webhook Handler (Stress & Confidence Focus)
- * Date: 2025-08-16 17:32:35 UTC
- * EMERGENCY FIX: Removed expecting_input_type dependencies
+ * The GOAT - Main Webhook Handler (Enhanced MVP)
+ * Date: 2025-08-17 10:59:29 UTC
+ * UPDATED: 3-option system with homework support and simplified exam prep
  */
 
 import { findOrCreateUser, updateUserActivity, updateUser } from './services/userService.js';
@@ -9,14 +9,14 @@ import { parseCommand } from './utils/commandParser.js';
 import { formatResponse, formatErrorResponse } from './utils/responseFormatter.js';
 import { CONSTANTS, MESSAGES } from './config/constants.js';
 
-import { stressHandler } from './handlers/stressHandler.js';
-import { confidenceHandler } from './handlers/confidenceHandler.js';
+import { examPrepHandler } from './handlers/examPrepHandler.js';
+import { homeworkHandler } from './handlers/homeworkHandler.js';
 import { practiceHandler } from './handlers/practiceHandler.js';
 
 export default async function handler(req, res) {
   const start = Date.now();
 
-  console.log('🚀 THE GOAT v2.0 - STRESS & CONFIDENCE PLATFORM ACTIVE');
+  console.log('🚀 THE GOAT v3.0 - ENHANCED MVP: EXAM/HOMEWORK/PRACTICE');
 
   if (req.method !== 'POST') {
     return res.status(405).json(
@@ -48,25 +48,21 @@ export default async function handler(req, res) {
     }
 
     console.log(
-      `👤 User ${user.id} | Menu: ${user.current_menu} | Session: ${user.panic_session_id || user.therapy_session_id || 'none'}`
+      `👤 User ${user.id} | Menu: ${user.current_menu} | Sessions: E:${!!user.panic_session_id} H:${!!user.homework_session_id}`
     );
 
     await updateUserActivity(user.id);
-
-    // EMERGENCY FIX: Determine expecting input from session state instead
-    const expectingInput = await determineExpectingInputFromContext(user);
 
     const command = parseCommand(message, {
       current_menu: user.current_menu,
       has_current_question: !!user.current_question_id,
       expecting_answer: !!user.current_question_id,
-      expecting_input_type: expectingInput, // Use derived value
-      expecting_registration_input: false
+      expecting_text_input: isExpectingTextInput(user.current_menu)
     });
 
     console.log(`🎯 Command parsed: ${command.type}`, {
       action: command.action,
-      inputType: command.input_type,
+      menuChoice: command.menuChoice,
       originalInput: command.originalInput?.substring(0, 50)
     });
 
@@ -81,15 +77,15 @@ export default async function handler(req, res) {
         reply = await showWelcomeMenu(user);
         break;
 
-      case CONSTANTS.COMMAND_TYPES.STRESSED:
+      case CONSTANTS.COMMAND_TYPES.EXAM_PREP:
         if (command.action === 'start') {
-          reply = await stressHandler.startStressSupport(user);
+          reply = await examPrepHandler.startExamPrep(user);
         }
         break;
 
-      case CONSTANTS.COMMAND_TYPES.CONFIDENCE_BOOST:
+      case CONSTANTS.COMMAND_TYPES.HOMEWORK:
         if (command.action === 'start') {
-          reply = await confidenceHandler.startConfidenceBoost(user);
+          reply = await homeworkHandler.startHomeworkHelp(user);
         }
         break;
 
@@ -99,40 +95,48 @@ export default async function handler(req, res) {
         }
         break;
 
-      // ===== CONTEXTUAL INPUTS =====
-
-      case 'contextual_input':
-        reply = await handleContextualInput(user, command.originalInput, command.input_type);
-        break;
-
       // ===== MENU NAVIGATION =====
 
-      case 'stress_level_select':
-        reply = await stressHandler.handleStressMenu(user, command.level);
+      case 'exam_prep_subject_select':
+        reply = await examPrepHandler.handleExamPrepMenu(user, command.menuChoice || 1);
         break;
 
-      case 'stress_subject_select':
-        reply = await stressHandler.handleStressMenu(user, command.menuChoice);
+      case 'homework_subject_select':
+        reply = await homeworkHandler.handleHomeworkMenu(user, command.menuChoice || 1);
         break;
 
-      case 'confidence_reason_select':
-        reply = await confidenceHandler.handleConfidenceMenu(user, command.menuChoice);
+      case 'homework_problem_type_select':
+        reply = await homeworkHandler.handleHomeworkMenu(user, command.menuChoice || 1);
         break;
 
-      case 'confidence_ladder_select':
-        reply = await confidenceHandler.handleConfidenceMenu(user, command.menuChoice);
+      case 'homework_method_action':
+        reply = await homeworkHandler.handleHomeworkMenu(user, command.menuChoice || 1);
         break;
 
       case 'lesson_action':
-        reply = await stressHandler.handleLessonAction(user, command.action);
+        if (user.homework_session_id) {
+          reply = await homeworkHandler.handleHomeworkMenu(user, command.menuChoice || 1);
+        } else {
+          reply = await examPrepHandler.handleLessonAction(user, command.action);
+        }
         break;
 
       case 'practice_continue_select':
-        if (user.current_menu === 'practice_continue') {
-          reply = await practiceHandler.handlePracticeContinue(user, command.action);
+        if (user.homework_session_id) {
+          reply =
+            (await homeworkHandler.handleHomeworkPracticeContinue?.(user, command.action)) ||
+            (await practiceHandler.handlePracticeContinue(user, command.action));
+        } else if (user.panic_session_id) {
+          reply = await examPrepHandler.handleExamPracticeContinue(user, command.action);
         } else {
-          reply = await stressHandler.handlePracticeContinue(user, command.action);
+          reply = await practiceHandler.handlePracticeContinue(user, command.action);
         }
+        break;
+
+      // ===== TEXT INPUTS =====
+
+      case 'text_input':
+        reply = await handleTextInput(user, command.text);
         break;
 
       // ===== ANSWER HANDLING =====
@@ -145,12 +149,6 @@ export default async function handler(req, res) {
         reply = command.error;
         break;
 
-      // ===== TEXT INPUTS =====
-
-      case 'registration':
-        reply = await handleLegacyContextualInput(user, command.originalInput);
-        break;
-
       // ===== UTILITIES =====
 
       case CONSTANTS.COMMAND_TYPES.HELP:
@@ -159,14 +157,6 @@ export default async function handler(req, res) {
 
       case 'invalid_option':
         reply = `Pick a number from the options above (${command.validRange}). ✨`;
-        break;
-
-      case 'plan_cancel':
-        reply = await handlePlanCancel(user);
-        break;
-
-      case 'plan_time_change':
-        reply = await handleTimeChange(user, command.time);
         break;
 
       // ===== FALLBACK =====
@@ -215,15 +205,7 @@ export default async function handler(req, res) {
   }
 }
 
-// ===== EMERGENCY FIX FUNCTIONS =====
-
-async function determineExpectingInputFromContext(user) {
-  // Derive expecting input type from current menu instead of database column
-  if (user.current_menu === 'stress_grade') return 'grade';
-  if (user.current_menu === 'stress_exam_date') return 'exam_date';
-  if (user.current_menu === 'stress_time') return 'preferred_time';
-  return null;
-}
+// ===== CORE FUNCTIONS =====
 
 async function showWelcomeMenu(user) {
   await updateUser(user.id, {
@@ -235,37 +217,18 @@ async function showWelcomeMenu(user) {
   return MESSAGES.WELCOME.MAIN_MENU;
 }
 
-async function handleContextualInput(user, input, inputType) {
-  console.log(`📝 Contextual input: type="${inputType}", input="${input}" from user ${user.id}`);
-
-  // Route based on input type
-  if (inputType === 'grade' || inputType === 'exam_date' || inputType === 'preferred_time') {
-    return await stressHandler.handleStressText(user, input);
-  }
-
-  if (inputType?.startsWith('confidence_')) {
-    return (
-      (await confidenceHandler.handleConfidenceText?.(user, input)) ||
-      `Please pick a number from the options above. 🫶`
-    );
-  }
-
-  // Fallback to legacy handling
-  return await handleLegacyContextualInput(user, input);
-}
-
-async function handleLegacyContextualInput(user, input) {
+async function handleTextInput(user, text) {
   console.log(
-    `📝 Legacy contextual input: "${input}" from user ${user.id}, menu: ${user.current_menu}`
+    `📝 Text input: "${text.substring(0, 50)}" from user ${user.id}, menu: ${user.current_menu}`
   );
 
-  // Route contextual inputs to appropriate handlers
-  if (user.current_menu?.startsWith('stress_') || user.panic_session_id) {
-    return await stressHandler.handleStressText(user, input);
+  // Route text inputs to appropriate handlers based on current session
+  if (user.homework_session_id || user.current_menu?.startsWith('homework_')) {
+    return await homeworkHandler.handleHomeworkText(user, text);
   }
 
-  if (user.current_menu?.startsWith('confidence_') || user.therapy_session_id) {
-    return `Please pick a number from the options above. 🫶`;
+  if (user.panic_session_id || user.current_menu?.startsWith('exam_prep_')) {
+    return await examPrepHandler.handleExamPrepText(user, text);
   }
 
   return await showWelcomeMenu(user);
@@ -274,12 +237,12 @@ async function handleLegacyContextualInput(user, input) {
 async function handleAnswerSubmission(user, command) {
   console.log(`📝 Answer submission: ${command.answer} from user ${user.id}`);
 
-  if (user.current_menu === 'stress_practice' || user.panic_session_id) {
-    return await stressHandler.handlePracticeAnswer(user, command.answer);
+  if (user.homework_session_id) {
+    return await homeworkHandler.handleHomeworkPracticeAnswer(user, command.answer);
   }
 
-  if (user.current_menu === 'confidence_practice' || user.therapy_session_id) {
-    return await confidenceHandler.handlePracticeAnswer(user, command.answer);
+  if (user.panic_session_id) {
+    return await examPrepHandler.handleExamPracticeAnswer(user, command.answer);
   }
 
   if (user.current_menu === 'practice_active') {
@@ -289,51 +252,28 @@ async function handleAnswerSubmission(user, command) {
   return `No active question. Type "practice" to start practicing! 🧮`;
 }
 
-async function handlePlanCancel(user) {
-  await updateUser(user.id, {
-    current_menu: 'welcome',
-    panic_session_id: null,
-    therapy_session_id: null,
-    last_active_at: new Date().toISOString()
-  });
-
-  return (
-    `Study plan cancelled. No stress.\n\n` +
-    `Type "stressed", "boost", or "practice" when you're ready. 🌱`
-  );
-}
-
-async function handleTimeChange(user, timeString) {
-  const timeMatch = timeString.match(/(\d{1,2})\s*([ap]m)?/i);
-
-  if (timeMatch) {
-    const hour = parseInt(timeMatch[1]);
-    const isPM = timeMatch[2]?.toLowerCase() === 'pm';
-    const hour24 = isPM && hour !== 12 ? hour + 12 : !isPM && hour === 12 ? 0 : hour;
-
-    await updateUser(user.id, {
-      last_active_at: new Date().toISOString()
-    });
-
-    return (
-      `Time updated to ${timeString}. ⏰\n\n` +
-      `I'll send daily reminders at that time.\n\n` +
-      `Type "practice" to continue or "menu" for options! ✨`
-    );
-  }
-
-  return `Try a time like "7pm" or "19:00". ⏰`;
-}
-
 function generateHelpMessage(user) {
   return (
     `I'm here to help you study with calm and clarity. 🧠\n\n` +
     `🔄 **Key commands:**\n` +
-    `• "stressed" → Stress support\n` +
-    `• "boost" → Confidence help\n` +
+    `• "exam" → Exam/test prep\n` +
+    `• "homework" → Homework help\n` +
     `• "practice" → Question practice\n` +
     `• "menu" → Main options\n\n` +
     `📚 **For Grades 10-11 Maths**\n\n` +
     `What do you need right now? ✨`
   );
+}
+
+function isExpectingTextInput(currentMenu) {
+  const textInputMenus = [
+    'homework_confusion',
+    'exam_prep_problems',
+    'exam_prep_exam_date',
+    'exam_prep_time',
+    'homework_grade',
+    'exam_prep_grade'
+  ];
+
+  return textInputMenus.includes(currentMenu);
 }

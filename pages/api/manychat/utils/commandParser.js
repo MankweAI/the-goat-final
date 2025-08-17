@@ -1,8 +1,7 @@
 /**
- * Enhanced Command Parser - Stress & Confidence Focus
- * Date: 2025-08-16 17:24:11 UTC
- * FIXED: Grade input contextual handling
- * Priority: Global commands → Context inputs → Menu navigation → Fallbacks
+ * Enhanced Command Parser - 3-Option Welcome Menu
+ * Date: 2025-08-17 10:59:29 UTC
+ * UPDATED: Exam/Homework/Practice (removed confidence, simplified stress)
  */
 
 import { CONSTANTS } from '../config/constants.js';
@@ -12,7 +11,7 @@ export function parseCommand(input, context = {}) {
   const originalInput = input.trim();
 
   console.log(
-    `🔍 Parsing: "${trimmed}" | Menu: ${context.current_menu} | Question: ${!!context.has_current_question} | Expecting: ${context.expecting_input_type}`
+    `🔍 Parsing: "${trimmed}" | Menu: ${context.current_menu} | Question: ${!!context.has_current_question}`
   );
 
   // ✅ PRIORITY 1: Answer submissions (highest priority)
@@ -41,17 +40,7 @@ export function parseCommand(input, context = {}) {
     return globalCommand;
   }
 
-  // ✅ PRIORITY 3: Contextual text inputs (NEW - CRITICAL FIX)
-  if (context.expecting_input_type) {
-    console.log(`✅ Contextual input: ${context.expecting_input_type}`);
-    return {
-      type: 'contextual_input',
-      input_type: context.expecting_input_type,
-      originalInput
-    };
-  }
-
-  // ✅ PRIORITY 4: Menu navigation
+  // ✅ PRIORITY 3: Menu navigation
   if (context.current_menu) {
     const menuResult = parseMenuInput(originalInput, context.current_menu);
     if (menuResult.isValid) {
@@ -69,25 +58,29 @@ export function parseCommand(input, context = {}) {
     }
   }
 
-  // ✅ PRIORITY 5: Legacy registration (kept for backward compatibility)
-  if (context.expecting_registration_input) {
-    return { type: 'registration', action: 'process_input', originalInput };
+  // ✅ PRIORITY 4: Text inputs (for homework/exam prep)
+  if (context.expecting_text_input) {
+    return {
+      type: 'text_input',
+      text: originalInput,
+      originalInput
+    };
   }
 
-  // ✅ PRIORITY 6: Fallback
+  // ✅ PRIORITY 5: Fallback
   console.log(`⚠️ Unrecognized: "${trimmed}"`);
   return { type: 'unrecognized', originalInput };
 }
 
-// ✅ Enhanced global commands (unchanged)
+// Enhanced global commands (updated for new system)
 function parseGlobalCommands(trimmed, originalInput) {
-  // Core flow triggers
-  if (['stressed', 'stress', 'steady', 'reset'].includes(trimmed)) {
-    return { type: CONSTANTS.COMMAND_TYPES.STRESSED, action: 'start', originalInput };
+  // Core flow triggers (updated)
+  if (['exam', 'test', 'scared', 'prep'].includes(trimmed)) {
+    return { type: CONSTANTS.COMMAND_TYPES.EXAM_PREP, action: 'start', originalInput };
   }
 
-  if (['boost', 'confidence', 'doubt'].includes(trimmed)) {
-    return { type: CONSTANTS.COMMAND_TYPES.CONFIDENCE_BOOST, action: 'start', originalInput };
+  if (['homework', 'hw', 'assignment'].includes(trimmed)) {
+    return { type: CONSTANTS.COMMAND_TYPES.HOMEWORK, action: 'start', originalInput };
   }
 
   if (['practice', 'question', 'next', 'q'].includes(trimmed)) {
@@ -103,26 +96,15 @@ function parseGlobalCommands(trimmed, originalInput) {
     return { type: CONSTANTS.COMMAND_TYPES.HELP, action: 'show', originalInput };
   }
 
-  // Plan management
-  if (['stop plan', 'cancel plan', 'no plan'].includes(trimmed)) {
-    return { type: 'plan_cancel', action: 'stop', originalInput };
-  }
-
-  if (trimmed.startsWith('change time ')) {
-    const timeString = trimmed.replace('change time ', '').trim();
-    return { type: 'plan_time_change', time: timeString, originalInput };
-  }
-
   // Legacy aliases (hidden compatibility)
-  if (['panic', 'therapy'].includes(trimmed)) {
-    const newType = trimmed === 'panic' ? 'stressed' : 'confidence_boost';
-    return { type: CONSTANTS.COMMAND_TYPES[newType.toUpperCase()], action: 'start', originalInput };
+  if (['panic', 'stressed'].includes(trimmed)) {
+    return { type: CONSTANTS.COMMAND_TYPES.EXAM_PREP, action: 'start', originalInput };
   }
 
   return { type: 'unrecognized', originalInput };
 }
 
-// ✅ Menu input parsing (unchanged)
+// Updated menu input parsing
 function parseMenuInput(input, currentMenu) {
   const number = parseInt(input.trim());
 
@@ -134,12 +116,12 @@ function parseMenuInput(input, currentMenu) {
     };
   }
 
-  // Welcome menu (NEW - core triage)
+  // NEW: Welcome menu (3 options)
   if (currentMenu === 'welcome') {
     if (number >= 1 && number <= 3) {
       const actions = {
-        1: { type: CONSTANTS.COMMAND_TYPES.STRESSED, action: 'start' },
-        2: { type: CONSTANTS.COMMAND_TYPES.CONFIDENCE_BOOST, action: 'start' },
+        1: { type: CONSTANTS.COMMAND_TYPES.EXAM_PREP, action: 'start' },
+        2: { type: CONSTANTS.COMMAND_TYPES.HOMEWORK, action: 'start' },
         3: { type: CONSTANTS.COMMAND_TYPES.PRACTICE, action: 'start' }
       };
       return {
@@ -150,55 +132,75 @@ function parseMenuInput(input, currentMenu) {
     return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
   }
 
-  // Stress intake menus
-  if (currentMenu === 'stress_level') {
-    if (number >= 1 && number <= 4) {
-      return {
-        isValid: true,
-        command: { type: 'stress_level_select', level: number, originalInput: input }
-      };
-    }
-    return { isInvalid: true, validRange: '1-4', reason: 'out_of_range' };
-  }
-
-  if (currentMenu === 'stress_subject') {
+  // Exam prep menus (simplified - no stress level)
+  if (currentMenu === 'exam_prep_subject') {
     if (number >= 1 && number <= 4) {
       const subjects = { 1: 'math', 2: 'math', 3: 'math', 4: 'math' }; // MVP: all lead to math
       return {
         isValid: true,
-        command: { type: 'stress_subject_select', subject: subjects[number], originalInput: input }
+        command: {
+          type: 'exam_prep_subject_select',
+          subject: subjects[number],
+          originalInput: input
+        }
       };
     }
     return { isInvalid: true, validRange: '1-4', reason: 'out_of_range' };
   }
 
-  // Confidence intake menus
-  if (currentMenu === 'confidence_reason') {
-    if (number >= 1 && number <= 5) {
-      const reasons = { 1: 'failed', 2: 'confused', 3: 'comparison', 4: 'comment', 5: 'other' };
-      return {
-        isValid: true,
-        command: { type: 'confidence_reason_select', reason: reasons[number], originalInput: input }
-      };
-    }
-    return { isInvalid: true, validRange: '1-5', reason: 'out_of_range' };
-  }
-
-  if (currentMenu === 'confidence_ladder') {
+  // NEW: Homework menus
+  if (currentMenu === 'homework_subject') {
     if (number >= 1 && number <= 4) {
-      const actions = { 1: 'r1_easy', 2: 'r2_reflect', 3: 'r3_medium', 4: 'skip' };
+      const subjects = { 1: 'math', 2: 'math', 3: 'math', 4: 'math' }; // MVP: all lead to math
       return {
         isValid: true,
-        command: { type: 'confidence_ladder_select', action: actions[number], originalInput: input }
+        command: {
+          type: 'homework_subject_select',
+          subject: subjects[number],
+          originalInput: input
+        }
       };
     }
     return { isInvalid: true, validRange: '1-4', reason: 'out_of_range' };
   }
 
-  // Lesson menus
+  if (currentMenu === 'homework_problem_type') {
+    if (number >= 1 && number <= 6) {
+      const problemTypes = {
+        1: 'equations',
+        2: 'word_problems',
+        3: 'graphs_functions',
+        4: 'calculus',
+        5: 'trigonometry',
+        6: 'other'
+      };
+      return {
+        isValid: true,
+        command: {
+          type: 'homework_problem_type_select',
+          problem_type: problemTypes[number],
+          originalInput: input
+        }
+      };
+    }
+    return { isInvalid: true, validRange: '1-6', reason: 'out_of_range' };
+  }
+
+  if (currentMenu === 'homework_method') {
+    if (number >= 1 && number <= 3) {
+      const actions = { 1: 'practice', 2: 'another_example', 3: 'back_to_homework' };
+      return {
+        isValid: true,
+        command: { type: 'homework_method_action', action: actions[number], originalInput: input }
+      };
+    }
+    return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
+  }
+
+  // Lesson menus (updated)
   if (currentMenu === 'lesson') {
     if (number >= 1 && number <= 3) {
-      const actions = { 1: 'start_practice', 2: 'another_example', 3: 'cancel' };
+      const actions = { 1: 'start_practice', 2: 'another_example', 3: 'back_to_main' };
       return {
         isValid: true,
         command: { type: 'lesson_action', action: actions[number], originalInput: input }
@@ -207,10 +209,10 @@ function parseMenuInput(input, currentMenu) {
     return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
   }
 
-  // Practice continue menu
+  // Practice continue menu (updated)
   if (currentMenu === 'practice_continue') {
     if (number >= 1 && number <= 4) {
-      const actions = { 1: 'continue', 2: 'switch_topic', 3: 'short_break', 4: 'remind_tonight' };
+      const actions = { 1: 'continue', 2: 'switch_topic', 3: 'back_to_homework', 4: 'take_break' };
       return {
         isValid: true,
         command: { type: 'practice_continue_select', action: actions[number], originalInput: input }
@@ -230,17 +232,17 @@ function parseMenuInput(input, currentMenu) {
 function getMenuRange(menu) {
   const ranges = {
     welcome: '1-3',
-    stress_level: '1-4',
-    stress_subject: '1-4',
-    confidence_reason: '1-5',
-    confidence_ladder: '1-4',
+    exam_prep_subject: '1-4',
+    homework_subject: '1-4',
+    homework_problem_type: '1-6',
+    homework_method: '1-3',
     lesson: '1-3',
     practice_continue: '1-4'
   };
   return ranges[menu] || '1-5';
 }
 
-// ✅ Answer validation (unchanged)
+// Answer validation (unchanged)
 function parseAnswerInput(input) {
   const trimmed = input.trim().toUpperCase();
   const validAnswers = CONSTANTS.VALID_ANSWERS;
