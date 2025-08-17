@@ -254,6 +254,7 @@ async function handleTextInput(user, text) {
     // ===== HOMEWORK TEXT INPUTS =====
 
     case 'homework_grade':
+    case 'homework_subject':
     case 'homework_confusion':
       return await homeworkHandler.handleHomeworkText(user, text);
 
