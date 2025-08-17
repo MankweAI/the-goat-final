@@ -1,27 +1,22 @@
 /**
- * The GOAT - Main Webhook Handler (Enhanced MVP) - COMPLETE REWRITE
- * Date: 2025-08-17 15:52:37 UTC
- * CRITICAL FIXES:
- * - Added all missing exam prep plan action handling
- * - Enhanced text input routing with exam date support
- * - Fixed lesson menu routing with context awareness
- * - Comprehensive error handling and logging
+ * The GOAT - Main Webhook Handler (Enhanced MVP)
+ * Date: 2025-08-17 12:15:32 UTC
+ * CRITICAL FIX: Defensive programming for command object structure
  */
 
 import { findOrCreateUser, updateUserActivity, updateUser } from './services/userService.js';
-import { parseCommand, isExpectingTextInput } from './utils/commandParser.js';
+import { parseCommand } from './utils/commandParser.js';
 import { formatResponse, formatErrorResponse } from './utils/responseFormatter.js';
 import { CONSTANTS, MESSAGES } from './config/constants.js';
 
 import { examPrepHandler } from './handlers/examPrepHandler.js';
 import { homeworkHandler } from './handlers/homeworkHandler.js';
 import { practiceHandler } from './handlers/practiceHandler.js';
-import { stressHandler } from './handlers/stressHandler.js';
 
 export default async function handler(req, res) {
   const start = Date.now();
 
-  console.log('🚀 THE GOAT v3.1 - ENHANCED MVP: EXAM/HOMEWORK/PRACTICE WITH BUG FIXES');
+  console.log('🚀 THE GOAT v3.0 - ENHANCED MVP: EXAM/HOMEWORK/PRACTICE');
 
   if (req.method !== 'POST') {
     return res.status(405).json(
@@ -65,7 +60,7 @@ export default async function handler(req, res) {
       expecting_text_input: isExpectingTextInput(user.current_menu)
     });
 
-    // Defensive programming - ensure command has required properties
+    // CRITICAL FIX: Defensive programming - ensure command has required properties
     const safeCommand = {
       type: command.type || 'unrecognized',
       action: command.action || null,
@@ -74,7 +69,7 @@ export default async function handler(req, res) {
       answer: command.answer || null,
       validRange: command.validRange || '1-5',
       originalInput: command.originalInput || message,
-      ...command
+      ...command // Spread original command to preserve any extra properties
     };
 
     console.log(`🎯 Command parsed: ${safeCommand.type}`, {
@@ -103,7 +98,7 @@ export default async function handler(req, res) {
 
       case CONSTANTS.COMMAND_TYPES.HOMEWORK:
         if (safeCommand.action === 'start') {
-          reply = await homeworkHandler.startHomework(user);
+          reply = await homeworkHandler.startHomeworkHelp(user);
         }
         break;
 
@@ -113,216 +108,188 @@ export default async function handler(req, res) {
         }
         break;
 
-      case CONSTANTS.COMMAND_TYPES.ANSWER:
-        reply = await handleAnswerSubmission(user, safeCommand.answer);
+      // ===== MENU NAVIGATION (FIXED) =====
+
+      case 'exam_prep_subject_select':
+        reply = await examPrepHandler.handleExamPrepMenu(user, safeCommand.menuChoice || 1);
         break;
 
-      // ===== EXAM PREP SPECIFIC =====
-
-      case 'exam_prep_subject':
-        reply = await examPrepHandler.handleExamPrepMenu(user, safeCommand.menuChoice);
+      case 'homework_subject_select':
+        reply = await homeworkHandler.handleHomeworkMenu(user, safeCommand.menuChoice || 1);
         break;
 
-      // CRITICAL FIX: Added missing exam prep plan action handling
-      case 'exam_prep_plan_action':
-        reply = await examPrepHandler.handleExamPrepPlanAction(user, safeCommand.action);
+      case 'homework_problem_type_select':
+        reply = await homeworkHandler.handleHomeworkMenu(user, safeCommand.menuChoice || 1);
         break;
 
-      // CRITICAL FIX: Added exam lesson menu handling
-      case 'exam_lesson_menu':
-        reply = await examPrepHandler.handleExamLessonMenu(user, safeCommand.menuChoice);
+      case 'homework_method_action':
+        reply = await homeworkHandler.handleHomeworkMenu(user, safeCommand.menuChoice || 1);
         break;
 
-      // ===== HOMEWORK SPECIFIC =====
-
-      case 'homework_subject':
-        reply = await homeworkHandler.handleHomeworkMenu(user, safeCommand.menuChoice);
+      case 'lesson_action':
+        if (user.homework_session_id) {
+          reply = await homeworkHandler.handleHomeworkMenu(user, safeCommand.menuChoice || 1);
+        } else {
+          reply = await examPrepHandler.handleLessonAction(user, safeCommand.action);
+        }
         break;
 
-      case 'homework_lesson_menu':
-        reply = await homeworkHandler.handleHomeworkLessonMenu(user, safeCommand.menuChoice);
+      case 'practice_continue_select':
+        if (user.homework_session_id) {
+          reply =
+            (await homeworkHandler.handleHomeworkPracticeContinue?.(user, safeCommand.action)) ||
+            (await practiceHandler.handlePracticeContinue(user, safeCommand.action));
+        } else if (user.panic_session_id) {
+          reply = await examPrepHandler.handleExamPracticeContinue(user, safeCommand.action);
+        } else {
+          reply = await practiceHandler.handlePracticeContinue(user, safeCommand.action);
+        }
         break;
 
-      // ===== PRACTICE SPECIFIC =====
-
-      case 'practice_continue':
-        reply = await practiceHandler.handlePracticeContinue(user, safeCommand.action);
-        break;
-
-      // ===== STRESS/PANIC SUPPORT (Legacy) =====
-
-      case 'stress_level':
-        reply = await stressHandler.handleStressMenu(user, safeCommand.menuChoice);
-        break;
-
-      case 'stress_subject':
-        reply = await stressHandler.handleStressMenu(user, safeCommand.menuChoice);
-        break;
-
-      // ===== TEXT INPUT HANDLING =====
+      // ===== TEXT INPUTS =====
 
       case 'text_input':
         reply = await handleTextInput(user, safeCommand.text);
         break;
 
-      // ===== ERROR HANDLING =====
+      // ===== ANSWER HANDLING =====
+
+      case CONSTANTS.COMMAND_TYPES.ANSWER:
+        reply = await handleAnswerSubmission(user, safeCommand);
+        break;
 
       case 'invalid_answer':
-        reply = MESSAGES.ERRORS.INVALID_ANSWER;
+        reply = safeCommand.error || CONSTANTS.MESSAGES.ERRORS.INVALID_ANSWER;
+        break;
+
+      // ===== UTILITIES =====
+
+      case CONSTANTS.COMMAND_TYPES.HELP:
+        reply = await generateHelpMessage(user);
         break;
 
       case 'invalid_option':
-        reply = `${MESSAGES.ERRORS.INVALID_MENU_OPTION}\n\nValid range: ${safeCommand.validRange}`;
+        reply = `Pick a number from the options above (${safeCommand.validRange}). ✨`;
         break;
+
+      case 'exam_prep_subject_select':
+        reply = await examPrepHandler.handleExamPrepMenu(user, safeCommand.menuChoice || 1);
+        break;
+
+      // ===== FALLBACK =====
 
       default:
-        console.warn(`⚠️ Unhandled command type: ${safeCommand.type}`);
-        reply = await showWelcomeMenu(user);
-        break;
+        console.log(`⚠️ Unhandled command: ${safeCommand.type}`);
+
+        if (user.current_question_id) {
+          reply = `To answer the question, send A, B, C, or D! 🎯`;
+        } else if (user.current_menu && user.current_menu !== 'welcome') {
+          reply = `Use the numbered options above, or type "menu" to start fresh. ✨`;
+        } else {
+          reply = await showWelcomeMenu(user);
+        }
     }
 
-    console.log(`✅ Reply generated (${reply.length} chars)`);
-
-    // Update user's last interaction
-    await updateUser(user.id, {
-      last_active_at: new Date().toISOString()
-    });
+    console.log(
+      `✅ Response (${reply.length} chars): ${reply.substring(0, 100)}${reply.length > 100 ? '...' : ''}`
+    );
 
     return res.status(200).json(
       formatResponse(reply, {
-        user_id: user.id,
+        subscriber_id: subscriberId,
+        elapsed_ms: Date.now() - start,
         command_type: safeCommand.type,
-        elapsed_ms: Date.now() - start
+        user_menu: user.current_menu,
+        has_question: !!user.current_question_id
       })
     );
   } catch (error) {
-    console.error('❌ Handler error:', error);
+    console.error('💥 Webhook error:', {
+      message: error.message,
+      stack: error.stack?.substring(0, 500),
+      subscriberId,
+      inputMessage: message,
+      timestamp: new Date().toISOString()
+    });
 
-    const errorReply =
-      process.env.NODE_ENV === 'development' ? `Error: ${error.message}` : MESSAGES.ERRORS.GENERIC;
-
-    return res.status(500).json(
-      formatErrorResponse(errorReply, {
-        error: error.message,
-        elapsed_ms: Date.now() - start
+    return res.status(200).json(
+      formatErrorResponse("Something went wrong. Let's try again in a moment. ✨", {
+        subscriber_id: subscriberId,
+        elapsed_ms: Date.now() - start,
+        error_type: error.name || 'UnknownError'
       })
     );
   }
 }
 
-// ===== HELPER FUNCTIONS =====
-
+// Core functions (unchanged)
 async function showWelcomeMenu(user) {
-  console.log(`🏠 Showing welcome menu to user ${user.id}`);
-
   await updateUser(user.id, {
     current_menu: 'welcome',
     current_question_id: null,
-    panic_session_id: null,
-    homework_session_id: null
+    last_active_at: new Date().toISOString()
   });
 
   return MESSAGES.WELCOME.MAIN_MENU;
 }
 
-async function handleAnswerSubmission(user, answer) {
-  console.log(`📝 Answer submission from user ${user.id}: ${answer}`);
-
-  if (!user.current_question_id) {
-    return MESSAGES.ERRORS.NO_QUESTION_ACTIVE;
-  }
-
-  // Determine context based on current menu
-  const context = user.current_menu;
-
-  if (context === 'practice_active') {
-    return await practiceHandler.handlePracticeAnswer(user, answer);
-  } else if (context === 'exam_practice_active' || user.exam_practice_context) {
-    return await examPrepHandler.handleExamPracticeAnswer(user, answer);
-  } else if (context === 'homework_practice_active') {
-    return await homeworkHandler.handleHomeworkPracticeAnswer(user, answer);
-  } else {
-    // Default to practice handler
-    return await practiceHandler.handlePracticeAnswer(user, answer);
-  }
-}
-
 async function handleTextInput(user, text) {
-  console.log(`📝 Text input from user ${user.id}: "${text.substring(0, 50)}"`);
+  console.log(
+    `📝 Text input: "${text?.substring(0, 50)}" from user ${user.id}, menu: ${user.current_menu}`
+  );
 
-  const currentMenu = user.current_menu;
-
-  switch (currentMenu) {
-    // ===== EXAM PREP TEXT INPUTS =====
-
-    case 'exam_prep_grade':
-    case 'exam_prep_exam_date':
-    case 'exam_prep_problems':
-    case 'exam_prep_time':
-      return await examPrepHandler.handleExamPrepText(user, text);
-
-    // ===== HOMEWORK TEXT INPUTS =====
-
-    case 'homework_grade':
-    case 'homework_confusion':
-      return await homeworkHandler.handleHomeworkText(user, text);
-
-    // ===== STRESS/PANIC TEXT INPUTS =====
-
-    case 'stress_exam_date':
-      return await stressHandler.handleStressText(user, text);
-
-    // ===== GENERAL GRADE INPUT =====
-
-    case 'ask_grade':
-      return await handleGradeInput(user, text);
-
-    default:
-      console.warn(`⚠️ Unhandled text input menu: ${currentMenu}`);
-      return `I didn't understand that input. Type "menu" to go back to the main menu. ✨`;
-  }
-}
-
-async function handleGradeInput(user, text) {
-  const grade = text.trim().toLowerCase();
-
-  if (!CONSTANTS.VALID_GRADES.includes(grade)) {
-    return `Please enter a valid grade: 10, 11, or varsity. 🎓`;
+  if (user.homework_session_id || user.current_menu?.startsWith('homework_')) {
+    return await homeworkHandler.handleHomeworkText(user, text);
   }
 
-  await updateUser(user.id, {
-    grade,
-    current_menu: 'welcome'
-  });
+  if (user.panic_session_id || user.current_menu?.startsWith('exam_prep_')) {
+    return await examPrepHandler.handleExamPrepText(user, text);
+  }
 
-  return `Grade ${grade} saved! 📚\n\n${MESSAGES.WELCOME.MAIN_MENU}`;
+  console.warn(`⚠️ Unexpected text input context: menu=${user.current_menu}, text="${text}"`);
+  return await showWelcomeMenu(user);
 }
 
-// ===== UTILITY FUNCTIONS =====
+async function handleAnswerSubmission(user, command) {
+  console.log(`📝 Answer submission: ${command.answer} from user ${user.id}`);
 
-// function formatResponse(message, metadata = {}) {
-//   return {
-//     success: true,
-//     message,
-//     timestamp: new Date().toISOString(),
-//     metadata
-//   };
-// }
+  if (user.homework_session_id) {
+    return await homeworkHandler.handleHomeworkPracticeAnswer(user, command.answer);
+  }
 
-// function formatErrorResponse(error, metadata = {}) {
-//   return {
-//     success: false,
-//     error,
-//     timestamp: new Date().toISOString(),
-//     metadata
-//   };
-// }
+  if (user.panic_session_id) {
+    return await examPrepHandler.handleExamPracticeAnswer(user, command.answer);
+  }
 
-// Export utility functions for testing
-export {
-  showWelcomeMenu,
-  handleAnswerSubmission,
-  handleTextInput,
-  formatResponse,
-  formatErrorResponse
-};
+  if (user.current_menu === 'practice_active') {
+    return await practiceHandler.handlePracticeAnswer(user, command.answer);
+  }
+
+  return `No active question. Type "practice" to start practicing! 🧮`;
+}
+
+function generateHelpMessage(user) {
+  return (
+    `I'm here to help you study with calm and clarity. 🧠\n\n` +
+    `🔄 **Key commands:**\n` +
+    `• "exam" → Exam/test prep\n` +
+    `• "homework" → Homework help\n` +
+    `• "practice" → Question practice\n` +
+    `• "menu" → Main options\n\n` +
+    `📚 **For Grades 10-11 Maths**\n\n` +
+    `What do you need right now? ✨`
+  );
+}
+
+function isExpectingTextInput(currentMenu) {
+  const textInputMenus = [
+    'exam_prep_grade',
+    'homework_grade',
+    'homework_confusion',
+    'exam_prep_problems',
+    'exam_prep_exam_date',
+    'exam_prep_time'
+  ];
+
+  return textInputMenus.includes(currentMenu);
+}
