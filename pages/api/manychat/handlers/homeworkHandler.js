@@ -1,7 +1,7 @@
 /**
- * Homework Support Handler - Academic Integrity First
- * Date: 2025-08-17 10:50:37 UTC
- * Purpose: Teach methods and approaches, not solve homework directly
+ * Homework Support Handler - FIXED Subject Selection UX
+ * Date: 2025-08-17 13:32:16 UTC
+ * CRITICAL FIXES: Removed misleading subject options, simplified flow
  */
 
 import { executeQuery } from '../config/database.js';
@@ -12,7 +12,7 @@ import { formatQuestion } from '../utils/questionFormatter.js';
 import { CONSTANTS, MESSAGES } from '../config/constants.js';
 
 export const homeworkHandler = {
-  // Entry point for homework help
+  // Entry point for homework help (simplified)
   async startHomeworkHelp(user) {
     const session = await getOrCreateHomeworkSession(user.id);
 
@@ -25,39 +25,34 @@ export const homeworkHandler = {
       return MESSAGES.WELCOME.GRADE_PROMPT;
     }
 
-    // Go to subject selection
-    session.session_state = { step: 'ask_subject' };
+    // Go directly to simplified subject confirmation
+    session.session_state = { step: 'confirm_subject' };
     await saveHomeworkSession(session);
     await markUserInHomeworkFlow(user.id, session.id, 'homework_subject');
 
     return MESSAGES.HOMEWORK.WELCOME_MESSAGE;
   },
 
-  // Handle menu choices in homework flow
+  // Handle menu choices in homework flow (simplified)
   async handleHomeworkMenu(user, choice) {
     const session = await getOrCreateHomeworkSession(user.id);
     const state = session.session_state || {};
-    const step = state.step || 'ask_subject';
+    const step = state.step || 'confirm_subject';
 
     console.log(`📚 Homework flow: step=${step}, choice=${choice}`);
 
-    if (step === 'ask_subject') {
-      // All subjects lead to math for MVP
-      const subjectNames = { 1: 'Mathematics', 2: 'Physics', 3: 'Chemistry', 4: 'Life Sciences' };
-      const chosenName = subjectNames[choice] || 'Mathematics';
+    if (step === 'confirm_subject') {
+      // Only "yes" is valid
+      if (choice === 1 || user.current_menu === 'homework_subject') {
+        session.subject = 'math';
+        session.chosen_subject_name = 'Mathematics';
+        session.session_state = { step: 'ask_problem_type' };
+        await saveHomeworkSession(session);
+        await updateUser(user.id, { current_menu: 'homework_problem_type' });
 
-      session.subject = 'math';
-      session.chosen_subject_name = chosenName;
-      session.session_state = { step: 'ask_problem_type' };
-      await saveHomeworkSession(session);
-      await updateUser(user.id, { current_menu: 'homework_problem_type' });
-
-      const response =
-        choice !== 1
-          ? `Got it! Let's start with Maths foundations for ${chosenName}.\n\n`
-          : `Perfect! Let's help with your Maths homework.\n\n`;
-
-      return response + MESSAGES.HOMEWORK.PROBLEM_TYPE_PROMPT;
+        return `Perfect! Let's help with your Maths homework.\n\n${MESSAGES.HOMEWORK.PROBLEM_TYPE_PROMPT}`;
+      }
+      return `Type "yes" to continue with Maths homework help! 💪`;
     }
 
     if (step === 'ask_problem_type') {
@@ -86,10 +81,7 @@ export const homeworkHandler = {
         await saveHomeworkSession(session);
         await updateUser(user.id, { current_menu: 'homework_confusion' });
 
-        return (
-          `Great! You're working on ${problemTypeNames[choice]}.\n\n` +
-          MESSAGES.HOMEWORK.CONFUSION_PROMPT
-        );
+        return `Great! You're working on ${problemTypeNames[choice]}.\n\n${MESSAGES.HOMEWORK.CONFUSION_PROMPT}`;
       }
       return `Please pick a number 1-6 for your problem type. 📚`;
     }
@@ -115,7 +107,7 @@ export const homeworkHandler = {
     return `I didn't catch that. Let's try again. 📚`;
   },
 
-  // Handle text input for homework confusion
+  // Handle text input for homework confusion (unchanged)
   async handleHomeworkText(user, text) {
     const session = await getOrCreateHomeworkSession(user.id);
     const state = session.session_state || {};
@@ -129,13 +121,29 @@ export const homeworkHandler = {
       if (['10', '11', 'varsity'].includes(lowerText)) {
         await updateUser(user.id, { grade: lowerText });
 
-        session.session_state = { step: 'ask_subject' };
+        session.session_state = { step: 'confirm_subject' };
         await saveHomeworkSession(session);
         await markUserInHomeworkFlow(user.id, session.id, 'homework_subject');
 
         return MESSAGES.HOMEWORK.WELCOME_MESSAGE;
       } else {
         return `Please choose 10, 11, or varsity for your grade. 🎓`;
+      }
+    }
+
+    // Handle subject confirmation
+    if (state.step === 'confirm_subject') {
+      const lowerText = text.toLowerCase().trim();
+      if (['yes', 'y', 'sure', 'ok'].includes(lowerText)) {
+        session.subject = 'math';
+        session.chosen_subject_name = 'Mathematics';
+        session.session_state = { step: 'ask_problem_type' };
+        await saveHomeworkSession(session);
+        await updateUser(user.id, { current_menu: 'homework_problem_type' });
+
+        return `Perfect! Let's help with your Maths homework.\n\n${MESSAGES.HOMEWORK.PROBLEM_TYPE_PROMPT}`;
+      } else {
+        return `I specialize in Mathematics for now. Type "yes" to continue! 📚`;
       }
     }
 
@@ -147,7 +155,7 @@ export const homeworkHandler = {
     return `I didn't catch that. Type "menu" to start over. 📚`;
   },
 
-  // Core method: Process homework confusion and generate method teaching
+  // Rest of methods unchanged
   async processHomeworkConfusion(user, session, confusionText) {
     try {
       console.log(`🔍 Processing homework confusion for user ${user.id}`);
@@ -187,7 +195,7 @@ export const homeworkHandler = {
     }
   },
 
-  // Generate method teaching with examples
+  // Generate method teaching with examples (unchanged)
   async generateMethodTeaching(session, analysis) {
     try {
       const problemType = session.problem_type_display;
@@ -216,7 +224,7 @@ export const homeworkHandler = {
     }
   },
 
-  // Get method content based on problem type
+  // Method templates (unchanged)
   async getMethodForProblemType(problemType, analysis) {
     const methodContent = {
       equations: this.getEquationsMethod(analysis),
@@ -230,7 +238,6 @@ export const homeworkHandler = {
     return methodContent[problemType] || methodContent.other;
   },
 
-  // Method templates for different problem types
   getEquationsMethod(analysis) {
     return (
       `📘 **EQUATION SOLVING METHOD:**\n\n` +
@@ -269,16 +276,13 @@ export const homeworkHandler = {
   },
 
   getCalculusMethod(analysis) {
-    return MESSAGES.LESSONS.CALCULUS_INTRO.replace(
-      '1️⃣ Start Practice',
-      '1️⃣ Try practice questions'
-    );
+    return MESSAGES.LESSONS.CALCULUS_INTRO.replace('3️⃣ Back to homework', '3️⃣ Back to homework');
   },
 
   getTrigonometryMethod(analysis) {
     return MESSAGES.LESSONS.TRIGONOMETRY_INTRO.replace(
-      '1️⃣ Start Practice',
-      '1️⃣ Try practice questions'
+      '3️⃣ Back to homework',
+      '3️⃣ Back to homework'
     );
   },
 
@@ -317,11 +321,10 @@ export const homeworkHandler = {
     );
   },
 
-  // Start method practice with similar questions
+  // Continue with practice and other methods (unchanged)
   async startMethodPractice(user, session) {
     const problemType = session.problem_type;
 
-    // Get practice question similar to their homework type
     const question = await questionService.getQuestionByTopic(user, problemType, {
       subject: 'math',
       difficulty: calculateDifficulty(user),
@@ -355,7 +358,6 @@ export const homeworkHandler = {
     );
   },
 
-  // Show another example
   async showAnotherExample(user, session) {
     const problemType = session.problem_type;
     const additionalExample = this.getAdditionalExample(problemType);
@@ -370,7 +372,6 @@ export const homeworkHandler = {
     );
   },
 
-  // Get additional examples for different problem types
   getAdditionalExample(problemType) {
     const examples = {
       equations:
@@ -402,7 +403,6 @@ export const homeworkHandler = {
     return examples[problemType] || examples.equations;
   },
 
-  // Complete homework session
   async completeHomeworkSession(user, session) {
     await endHomeworkSession(session.id);
     await clearHomeworkState(user.id);
@@ -419,7 +419,6 @@ export const homeworkHandler = {
     );
   },
 
-  // Handle practice answers during homework session
   async handleHomeworkPracticeAnswer(user, answerLetter) {
     const session = await getOrCreateHomeworkSession(user.id);
     const state = session.session_state || {};
@@ -453,7 +452,6 @@ export const homeworkHandler = {
         `${MESSAGES.HOMEWORK.PRACTICE_ENCOURAGEMENT}`
       );
     } else {
-      // Continue with more practice
       const nextQuestion = await getNextHomeworkPracticeQuestion(user, session);
       if (!nextQuestion) {
         return await this.completeHomeworkSession(user, session);
@@ -467,7 +465,6 @@ export const homeworkHandler = {
     }
   },
 
-  // Generate basic method teaching (fallback)
   async generateBasicMethodTeaching(session) {
     const problemTypeDisplay = session.problem_type_display || 'these problems';
 
@@ -487,7 +484,7 @@ export const homeworkHandler = {
   }
 };
 
-// Helper functions
+// Helper functions (unchanged)
 async function getOrCreateHomeworkSession(userId) {
   return await executeQuery(async (supabase) => {
     const { data: existing } = await supabase
@@ -506,7 +503,7 @@ async function getOrCreateHomeworkSession(userId) {
       .insert({
         user_id: userId,
         subject: 'math',
-        session_state: { step: 'ask_subject' }
+        session_state: { step: 'confirm_subject' }
       })
       .select('*')
       .single();
@@ -599,4 +596,3 @@ function calculateDifficulty(user) {
   if (rate >= 0.6) return 'medium';
   return 'easy';
 }
-
