@@ -19,26 +19,31 @@ import MenuRenderer from '../utils/menuRenderer.js';
 
 export const examPrepHandler = {
   // Entry point - simplified flow
-  async startExamPrep(user) {
-    console.log(`📅 Starting exam prep for user ${user.id}`);
+    async startExamPrep(user) {
+        try {
+                console.log(`📅 Starting exam prep for user ${user.id}`);
 
-    const session = await getOrCreateExamPrepSession(user.id);
+                const session = await getOrCreateExamPrepSession(user.id);
 
-    // Check if we have grade
-    if (!user.grade) {
-      session.session_state = { step: 'ask_grade' };
-      await saveSession(session);
-      await markUserInExamPrepFlow(user.id, session.id, 'exam_prep_grade');
+                // Check if we have grade
+                if (!user.grade) {
+                  session.session_state = { step: 'ask_grade' };
+                  await saveSession(session);
+                  await markUserInExamPrepFlow(user.id, session.id, 'exam_prep_grade');
 
-      return MESSAGES.WELCOME.GRADE_PROMPT;
-    }
+                  return MESSAGES.WELCOME.GRADE_PROMPT;
+                }
 
-    // Go straight to subject selection
-    session.session_state = { step: 'ask_subject' };
-    await saveSession(session);
-    await markUserInExamPrepFlow(user.id, session.id, 'exam_prep_subject');
+                // Go straight to subject selection
+                session.session_state = { step: 'ask_subject' };
+                await saveSession(session);
+                await markUserInExamPrepFlow(user.id, session.id, 'exam_prep_subject');
 
-    return `${MESSAGES.EXAM_PREP.VALIDATION_RESPONSE}\n\n${MESSAGES.EXAM_PREP.SUBJECT_PROMPT}`;
+                return `${MESSAGES.EXAM_PREP.VALIDATION_RESPONSE}\n\n${MESSAGES.EXAM_PREP.SUBJECT_PROMPT}`;
+        } catch (error) {
+            console.error('❌ Exam prep setup failed:', error);
+            return 'Eish, something went wrong setting up exam prep. Try again in a moment! 🫶';
+        }
   },
 
   // Handle menu choices in exam prep flow
@@ -374,31 +379,34 @@ export const examPrepHandler = {
 async function getOrCreateExamPrepSession(userId) {
   return executeQuery(async (supabase) => {
     // Check for existing active session
-    let { data: session } = await supabase
+    let { data: session, error: fetchError } = await supabase
       .from('panic_sessions')
       .select('*')
       .eq('user_id', userId)
       .eq('status', 'active')
       .single();
 
-    if (!session) {
-      // Create new session
-      const { data: newSession } = await supabase
-        .from('panic_sessions')
-        .insert({
-          user_id: userId,
-          session_type: 'exam_prep',
-          status: 'active',
-          session_state: { step: 'ask_subject' },
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+    if (session) return session;
 
-      session = newSession;
+    // Create new session if none exists
+    const { data: newSession, error: createError } = await supabase
+      .from('panic_sessions')
+      .insert({
+        user_id: userId,
+        session_type: 'exam_prep',
+        status: 'active',
+        session_state: { step: 'ask_subject' },
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (createError) {
+      console.error('❌ Session creation failed:', createError);
+      throw new Error('Failed to create exam prep session');
     }
 
-    return session;
+    return newSession;
   });
 }
 
