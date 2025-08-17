@@ -1,7 +1,7 @@
 /**
- * Enhanced Command Parser - FIXED Grade Input Bug
- * Date: 2025-08-17 11:40:15 UTC
- * CRITICAL FIX: Grade input detection and text input handling
+ * Enhanced Command Parser - FIXED Command Structure Bug
+ * Date: 2025-08-17 12:15:32 UTC
+ * CRITICAL FIX: Consistent command object structure across all types
  */
 
 import { CONSTANTS } from '../config/constants.js';
@@ -11,7 +11,7 @@ export function parseCommand(input, context = {}) {
   const originalInput = input.trim();
 
   console.log(
-    `🔍 Parsing: "${trimmed}" | Menu: ${context.current_menu} | Question: ${!!context.has_current_question} | ExpectingText: ${context.expecting_text_input}`
+    `🔍 Parsing: "${trimmed}" | Menu: ${context.current_menu} | Question: ${!!context.has_current_question}`
   );
 
   // ✅ PRIORITY 1: Answer submissions (highest priority)
@@ -21,14 +21,23 @@ export function parseCommand(input, context = {}) {
       return {
         type: CONSTANTS.COMMAND_TYPES.ANSWER,
         answer: answerResult.answer,
-        originalInput
+        originalInput,
+        // Ensure all commands have these properties
+        menuChoice: null,
+        action: null,
+        text: null,
+        validRange: null
       };
     }
     if (answerResult.isInvalid) {
       return {
         type: 'invalid_answer',
         error: answerResult.error,
-        originalInput
+        originalInput,
+        menuChoice: null,
+        action: null,
+        text: null,
+        validRange: null
       };
     }
   }
@@ -37,16 +46,27 @@ export function parseCommand(input, context = {}) {
   const globalCommand = parseGlobalCommands(trimmed, originalInput);
   if (globalCommand.type !== 'unrecognized') {
     console.log(`✅ Global command: ${globalCommand.type}`);
-    return globalCommand;
+    return {
+      ...globalCommand,
+      // Ensure consistent structure
+      menuChoice: null,
+      text: null,
+      validRange: null
+    };
   }
 
-  // ✅ PRIORITY 3: Text inputs (CRITICAL FIX - Check BEFORE menu parsing)
+  // ✅ PRIORITY 3: Text inputs (Check BEFORE menu parsing)
   if (context.expecting_text_input || isTextInputContext(context.current_menu)) {
     console.log(`✅ Text input context detected: ${context.current_menu}`);
     return {
       type: 'text_input',
       text: originalInput,
-      originalInput
+      originalInput,
+      // Consistent structure
+      menuChoice: null,
+      action: null,
+      answer: null,
+      validRange: null
     };
   }
 
@@ -55,7 +75,14 @@ export function parseCommand(input, context = {}) {
     const menuResult = parseMenuInput(originalInput, context.current_menu);
     if (menuResult.isValid) {
       console.log(`✅ Menu command:`, menuResult.command);
-      return menuResult.command;
+      return {
+        ...menuResult.command,
+        // Ensure menuChoice is always set
+        menuChoice: menuResult.command.menuChoice || parseInt(originalInput.trim()) || 1,
+        text: null,
+        answer: null,
+        validRange: null
+      };
     }
     if (menuResult.isInvalid) {
       return {
@@ -63,38 +90,46 @@ export function parseCommand(input, context = {}) {
         menu: context.current_menu,
         attempted: originalInput,
         validRange: menuResult.validRange,
-        originalInput
+        originalInput,
+        // Consistent structure
+        menuChoice: null,
+        action: null,
+        text: null,
+        answer: null
       };
     }
   }
 
   // ✅ PRIORITY 5: Fallback
   console.log(`⚠️ Unrecognized: "${trimmed}"`);
-  return { type: 'unrecognized', originalInput };
+  return {
+    type: 'unrecognized',
+    originalInput,
+    // Consistent structure
+    menuChoice: null,
+    action: null,
+    text: null,
+    answer: null,
+    validRange: null
+  };
 }
 
-// CRITICAL FIX: Proper text input context detection
+// Text input context detection
 function isTextInputContext(currentMenu) {
   const textInputMenus = [
-    // Grade selection contexts
     'exam_prep_grade',
     'homework_grade',
-
-    // Text input contexts
     'homework_confusion',
     'exam_prep_problems',
     'exam_prep_exam_date',
     'exam_prep_time'
   ];
 
-  const isTextContext = textInputMenus.includes(currentMenu);
-  console.log(`🔍 Text input check: menu="${currentMenu}", isText=${isTextContext}`);
-  return isTextContext;
+  return textInputMenus.includes(currentMenu);
 }
 
-// Enhanced global commands (updated for new system)
+// Global commands
 function parseGlobalCommands(trimmed, originalInput) {
-  // Core flow triggers (updated)
   if (['exam', 'test', 'scared', 'prep'].includes(trimmed)) {
     return { type: CONSTANTS.COMMAND_TYPES.EXAM_PREP, action: 'start', originalInput };
   }
@@ -107,7 +142,6 @@ function parseGlobalCommands(trimmed, originalInput) {
     return { type: CONSTANTS.COMMAND_TYPES.PRACTICE, action: 'start', originalInput };
   }
 
-  // Navigation commands
   if (['menu', 'main', 'home', 'start'].includes(trimmed)) {
     return { type: 'welcome_menu', action: 'show', originalInput };
   }
@@ -116,7 +150,6 @@ function parseGlobalCommands(trimmed, originalInput) {
     return { type: CONSTANTS.COMMAND_TYPES.HELP, action: 'show', originalInput };
   }
 
-  // Legacy aliases (hidden compatibility)
   if (['panic', 'stressed'].includes(trimmed)) {
     return { type: CONSTANTS.COMMAND_TYPES.EXAM_PREP, action: 'start', originalInput };
   }
@@ -124,7 +157,7 @@ function parseGlobalCommands(trimmed, originalInput) {
   return { type: 'unrecognized', originalInput };
 }
 
-// Updated menu input parsing
+// FIXED: Menu input parsing with consistent structure
 function parseMenuInput(input, currentMenu) {
   const number = parseInt(input.trim());
 
@@ -136,7 +169,7 @@ function parseMenuInput(input, currentMenu) {
     };
   }
 
-  // NEW: Welcome menu (3 options)
+  // Welcome menu (3 options)
   if (currentMenu === 'welcome') {
     if (number >= 1 && number <= 3) {
       const actions = {
@@ -146,44 +179,49 @@ function parseMenuInput(input, currentMenu) {
       };
       return {
         isValid: true,
-        command: { ...actions[number], originalInput: input, menuChoice: number }
+        command: {
+          ...actions[number],
+          originalInput: input,
+          menuChoice: number // CRITICAL FIX: Always set menuChoice
+        }
       };
     }
     return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
   }
 
-  // Exam prep menus (simplified - no stress level)
+  // Exam prep subject menu
   if (currentMenu === 'exam_prep_subject') {
     if (number >= 1 && number <= 4) {
-      const subjects = { 1: 'math', 2: 'math', 3: 'math', 4: 'math' }; // MVP: all lead to math
       return {
         isValid: true,
         command: {
           type: 'exam_prep_subject_select',
-          subject: subjects[number],
-          originalInput: input
+          subject: 'math', // MVP: all lead to math
+          originalInput: input,
+          menuChoice: number // CRITICAL FIX: Always set menuChoice
         }
       };
     }
     return { isInvalid: true, validRange: '1-4', reason: 'out_of_range' };
   }
 
-  // NEW: Homework menus
+  // Homework subject menu
   if (currentMenu === 'homework_subject') {
     if (number >= 1 && number <= 4) {
-      const subjects = { 1: 'math', 2: 'math', 3: 'math', 4: 'math' }; // MVP: all lead to math
       return {
         isValid: true,
         command: {
           type: 'homework_subject_select',
-          subject: subjects[number],
-          originalInput: input
+          subject: 'math', // MVP: all lead to math
+          originalInput: input,
+          menuChoice: number // CRITICAL FIX: Always set menuChoice
         }
       };
     }
     return { isInvalid: true, validRange: '1-4', reason: 'out_of_range' };
   }
 
+  // Homework problem type menu
   if (currentMenu === 'homework_problem_type') {
     if (number >= 1 && number <= 6) {
       const problemTypes = {
@@ -199,43 +237,60 @@ function parseMenuInput(input, currentMenu) {
         command: {
           type: 'homework_problem_type_select',
           problem_type: problemTypes[number],
-          originalInput: input
+          originalInput: input,
+          menuChoice: number // CRITICAL FIX: Always set menuChoice
         }
       };
     }
     return { isInvalid: true, validRange: '1-6', reason: 'out_of_range' };
   }
 
+  // Homework method menu
   if (currentMenu === 'homework_method') {
     if (number >= 1 && number <= 3) {
       const actions = { 1: 'practice', 2: 'another_example', 3: 'back_to_homework' };
       return {
         isValid: true,
-        command: { type: 'homework_method_action', action: actions[number], originalInput: input }
+        command: {
+          type: 'homework_method_action',
+          action: actions[number],
+          originalInput: input,
+          menuChoice: number // CRITICAL FIX: Always set menuChoice
+        }
       };
     }
     return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
   }
 
-  // Lesson menus (updated)
+  // Lesson menu
   if (currentMenu === 'lesson') {
     if (number >= 1 && number <= 3) {
       const actions = { 1: 'start_practice', 2: 'another_example', 3: 'back_to_main' };
       return {
         isValid: true,
-        command: { type: 'lesson_action', action: actions[number], originalInput: input }
+        command: {
+          type: 'lesson_action',
+          action: actions[number],
+          originalInput: input,
+          menuChoice: number // CRITICAL FIX: Always set menuChoice
+        }
       };
     }
     return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
   }
 
-  // Practice continue menu (updated)
+  // Practice continue menu
   if (currentMenu === 'practice_continue') {
     if (number >= 1 && number <= 4) {
       const actions = { 1: 'continue', 2: 'switch_topic', 3: 'back_to_homework', 4: 'take_break' };
       return {
         isValid: true,
-        command: { type: 'practice_continue_select', action: actions[number], originalInput: input }
+        command: {
+          type: 'practice_continue_select',
+          action: actions[number],
+          originalInput: input,
+          menuChoice: number // CRITICAL FIX: Always set menuChoice
+        }
       };
     }
     return { isInvalid: true, validRange: '1-4', reason: 'out_of_range' };
@@ -244,7 +299,7 @@ function parseMenuInput(input, currentMenu) {
   // Unknown menu
   return {
     isInvalid: true,
-    validRange: '1-5',
+    validRange: getMenuRange(currentMenu),
     reason: 'unknown_menu'
   };
 }
@@ -262,7 +317,7 @@ function getMenuRange(menu) {
   return ranges[menu] || '1-5';
 }
 
-// Answer validation (unchanged)
+// Answer validation
 function parseAnswerInput(input) {
   const trimmed = input.trim().toUpperCase();
   const validAnswers = CONSTANTS.VALID_ANSWERS;
@@ -271,7 +326,6 @@ function parseAnswerInput(input) {
     return { isValid: true, answer: trimmed };
   }
 
-  // Handle common patterns
   const patterns = [/^([ABCD])\)$/, /^ANSWER\s*([ABCD])$/i, /^([ABCD])\.$/];
 
   for (const pattern of patterns) {

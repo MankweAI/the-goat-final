@@ -1,7 +1,7 @@
 /**
  * The GOAT - Main Webhook Handler (Enhanced MVP)
- * Date: 2025-08-17 11:40:15 UTC
- * CRITICAL FIX: Grade input context detection and routing
+ * Date: 2025-08-17 12:15:32 UTC
+ * CRITICAL FIX: Defensive programming for command object structure
  */
 
 import { findOrCreateUser, updateUserActivity, updateUser } from './services/userService.js';
@@ -53,25 +53,36 @@ export default async function handler(req, res) {
 
     await updateUserActivity(user.id);
 
-    // CRITICAL FIX: Enhanced context detection
     const command = parseCommand(message, {
       current_menu: user.current_menu,
       has_current_question: !!user.current_question_id,
       expecting_answer: !!user.current_question_id,
-      expecting_text_input: isExpectingTextInput(user.current_menu) // Fixed function call
+      expecting_text_input: isExpectingTextInput(user.current_menu)
     });
 
-    console.log(`🎯 Command parsed: ${command.type}`, {
-      action: command.action,
-      menuChoice: command.menuChoice,
-      text: command.text?.substring(0, 30),
-      originalInput: command.originalInput?.substring(0, 50)
+    // CRITICAL FIX: Defensive programming - ensure command has required properties
+    const safeCommand = {
+      type: command.type || 'unrecognized',
+      action: command.action || null,
+      menuChoice: command.menuChoice || null,
+      text: command.text || null,
+      answer: command.answer || null,
+      validRange: command.validRange || '1-5',
+      originalInput: command.originalInput || message,
+      ...command // Spread original command to preserve any extra properties
+    };
+
+    console.log(`🎯 Command parsed: ${safeCommand.type}`, {
+      action: safeCommand.action,
+      menuChoice: safeCommand.menuChoice,
+      text: safeCommand.text?.substring(0, 30),
+      originalInput: safeCommand.originalInput?.substring(0, 50)
     });
 
     let reply = '';
 
     // Route to appropriate handlers
-    switch (command.type) {
+    switch (safeCommand.type) {
       // ===== CORE FLOWS =====
 
       case 'welcome_menu':
@@ -80,75 +91,75 @@ export default async function handler(req, res) {
         break;
 
       case CONSTANTS.COMMAND_TYPES.EXAM_PREP:
-        if (command.action === 'start') {
+        if (safeCommand.action === 'start') {
           reply = await examPrepHandler.startExamPrep(user);
         }
         break;
 
       case CONSTANTS.COMMAND_TYPES.HOMEWORK:
-        if (command.action === 'start') {
+        if (safeCommand.action === 'start') {
           reply = await homeworkHandler.startHomeworkHelp(user);
         }
         break;
 
       case CONSTANTS.COMMAND_TYPES.PRACTICE:
-        if (command.action === 'start') {
+        if (safeCommand.action === 'start') {
           reply = await practiceHandler.startPractice(user);
         }
         break;
 
-      // ===== MENU NAVIGATION =====
+      // ===== MENU NAVIGATION (FIXED) =====
 
       case 'exam_prep_subject_select':
-        reply = await examPrepHandler.handleExamPrepMenu(user, command.menuChoice || 1);
+        reply = await examPrepHandler.handleExamPrepMenu(user, safeCommand.menuChoice || 1);
         break;
 
       case 'homework_subject_select':
-        reply = await homeworkHandler.handleHomeworkMenu(user, command.menuChoice || 1);
+        reply = await homeworkHandler.handleHomeworkMenu(user, safeCommand.menuChoice || 1);
         break;
 
       case 'homework_problem_type_select':
-        reply = await homeworkHandler.handleHomeworkMenu(user, command.menuChoice || 1);
+        reply = await homeworkHandler.handleHomeworkMenu(user, safeCommand.menuChoice || 1);
         break;
 
       case 'homework_method_action':
-        reply = await homeworkHandler.handleHomeworkMenu(user, command.menuChoice || 1);
+        reply = await homeworkHandler.handleHomeworkMenu(user, safeCommand.menuChoice || 1);
         break;
 
       case 'lesson_action':
         if (user.homework_session_id) {
-          reply = await homeworkHandler.handleHomeworkMenu(user, command.menuChoice || 1);
+          reply = await homeworkHandler.handleHomeworkMenu(user, safeCommand.menuChoice || 1);
         } else {
-          reply = await examPrepHandler.handleLessonAction(user, command.action);
+          reply = await examPrepHandler.handleLessonAction(user, safeCommand.action);
         }
         break;
 
       case 'practice_continue_select':
         if (user.homework_session_id) {
           reply =
-            (await homeworkHandler.handleHomeworkPracticeContinue?.(user, command.action)) ||
-            (await practiceHandler.handlePracticeContinue(user, command.action));
+            (await homeworkHandler.handleHomeworkPracticeContinue?.(user, safeCommand.action)) ||
+            (await practiceHandler.handlePracticeContinue(user, safeCommand.action));
         } else if (user.panic_session_id) {
-          reply = await examPrepHandler.handleExamPracticeContinue(user, command.action);
+          reply = await examPrepHandler.handleExamPracticeContinue(user, safeCommand.action);
         } else {
-          reply = await practiceHandler.handlePracticeContinue(user, command.action);
+          reply = await practiceHandler.handlePracticeContinue(user, safeCommand.action);
         }
         break;
 
-      // ===== TEXT INPUTS (CRITICAL FIX) =====
+      // ===== TEXT INPUTS =====
 
       case 'text_input':
-        reply = await handleTextInput(user, command.text);
+        reply = await handleTextInput(user, safeCommand.text);
         break;
 
       // ===== ANSWER HANDLING =====
 
       case CONSTANTS.COMMAND_TYPES.ANSWER:
-        reply = await handleAnswerSubmission(user, command);
+        reply = await handleAnswerSubmission(user, safeCommand);
         break;
 
       case 'invalid_answer':
-        reply = command.error;
+        reply = safeCommand.error || CONSTANTS.MESSAGES.ERRORS.INVALID_ANSWER;
         break;
 
       // ===== UTILITIES =====
@@ -158,13 +169,13 @@ export default async function handler(req, res) {
         break;
 
       case 'invalid_option':
-        reply = `Pick a number from the options above (${command.validRange}). ✨`;
+        reply = `Pick a number from the options above (${safeCommand.validRange}). ✨`;
         break;
 
       // ===== FALLBACK =====
 
       default:
-        console.log(`⚠️ Unhandled command: ${command.type}`);
+        console.log(`⚠️ Unhandled command: ${safeCommand.type}`);
 
         if (user.current_question_id) {
           reply = `To answer the question, send A, B, C, or D! 🎯`;
@@ -183,7 +194,7 @@ export default async function handler(req, res) {
       formatResponse(reply, {
         subscriber_id: subscriberId,
         elapsed_ms: Date.now() - start,
-        command_type: command.type,
+        command_type: safeCommand.type,
         user_menu: user.current_menu,
         has_question: !!user.current_question_id
       })
@@ -207,8 +218,7 @@ export default async function handler(req, res) {
   }
 }
 
-// ===== CORE FUNCTIONS =====
-
+// Core functions (unchanged)
 async function showWelcomeMenu(user) {
   await updateUser(user.id, {
     current_menu: 'welcome',
@@ -221,10 +231,9 @@ async function showWelcomeMenu(user) {
 
 async function handleTextInput(user, text) {
   console.log(
-    `📝 Text input: "${text.substring(0, 50)}" from user ${user.id}, menu: ${user.current_menu}`
+    `📝 Text input: "${text?.substring(0, 50)}" from user ${user.id}, menu: ${user.current_menu}`
   );
 
-  // Route text inputs to appropriate handlers based on current session/menu
   if (user.homework_session_id || user.current_menu?.startsWith('homework_')) {
     return await homeworkHandler.handleHomeworkText(user, text);
   }
@@ -233,7 +242,6 @@ async function handleTextInput(user, text) {
     return await examPrepHandler.handleExamPrepText(user, text);
   }
 
-  // Fallback - shouldn't happen with proper context detection
   console.warn(`⚠️ Unexpected text input context: menu=${user.current_menu}, text="${text}"`);
   return await showWelcomeMenu(user);
 }
@@ -269,21 +277,15 @@ function generateHelpMessage(user) {
   );
 }
 
-// CRITICAL FIX: Proper text input context detection
 function isExpectingTextInput(currentMenu) {
   const textInputMenus = [
-    // Grade selection contexts (CRITICAL)
     'exam_prep_grade',
     'homework_grade',
-
-    // Other text input contexts
     'homework_confusion',
     'exam_prep_problems',
     'exam_prep_exam_date',
     'exam_prep_time'
   ];
 
-  const isExpecting = textInputMenus.includes(currentMenu);
-  console.log(`🔍 Text input check: menu="${currentMenu}", expecting=${isExpecting}`);
-  return isExpecting;
+  return textInputMenus.includes(currentMenu);
 }
