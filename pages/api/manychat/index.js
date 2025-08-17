@@ -2,6 +2,7 @@
  * The GOAT - Main Webhook Handler (Enhanced MVP) - COMPLETE REWRITE
  * Date: 2025-08-17 15:52:37 UTC
  * CRITICAL FIXES:
+ * - Fixed homework handler method name mismatch
  * - Added all missing exam prep plan action handling
  * - Enhanced text input routing with exam date support
  * - Fixed lesson menu routing with context awareness
@@ -102,7 +103,8 @@ export default async function handler(req, res) {
 
       case CONSTANTS.COMMAND_TYPES.HOMEWORK:
         if (safeCommand.action === 'start') {
-          reply = await homeworkHandler.startHomework(user);
+          // CRITICAL FIX: Changed from startHomework to startHomeworkHelp
+          reply = await homeworkHandler.startHomeworkHelp(user);
         }
         break;
 
@@ -147,7 +149,6 @@ export default async function handler(req, res) {
       case 'practice_continue':
         reply = await practiceHandler.handlePracticeContinue(user, safeCommand.action);
         break;
-
 
       // ===== TEXT INPUT HANDLING =====
 
@@ -281,26 +282,6 @@ async function handleGradeInput(user, text) {
 
   return `Grade ${grade} saved! 📚\n\n${MESSAGES.WELCOME.MAIN_MENU}`;
 }
-
-// ===== UTILITY FUNCTIONS =====
-
-// function formatResponse(message, metadata = {}) {
-//   return {
-//     success: true,
-//     message,
-//     timestamp: new Date().toISOString(),
-//     metadata
-//   };
-// }
-
-// function formatErrorResponse(error, metadata = {}) {
-//   return {
-//     success: false,
-//     error,
-//     timestamp: new Date().toISOString(),
-//     metadata
-//   };
-// }
 
 // Export utility functions for testing
 export {
