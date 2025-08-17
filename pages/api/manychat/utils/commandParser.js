@@ -5,6 +5,7 @@
  * - Added missing exam_prep_plan and exam_prep_plan_decision menu cases
  * - Fixed text input detection for exam_prep_exam_date
  * - Added exam_lesson menu support
+ * - FIXED homework_subject text input detection
  */
 
 import { CONSTANTS } from '../config/constants.js';
@@ -119,6 +120,7 @@ function isTextInputContext(currentMenu) {
     'exam_prep_problems',
     'exam_prep_time',
     'homework_grade',
+    'homework_subject', // CRITICAL FIX: Added homework_subject for "yes" input
     'homework_confusion',
     'stress_exam_date'
   ];
@@ -219,14 +221,16 @@ function parseMenuInput(input, currentMenu) {
       }
       return { isInvalid: true, validRange: '1-3' };
 
-    case 'homework_subject':
-      if (choice >= 1 && choice <= 4) {
+    // NOTE: homework_subject is now handled as text input, not menu input
+
+    case 'homework_problem_type':
+      if (choice >= 1 && choice <= 6) {
         return {
           isValid: true,
-          command: { type: 'homework_subject', menuChoice: choice }
+          command: { type: 'homework_problem_type', menuChoice: choice }
         };
       }
-      return { isInvalid: true, validRange: '1-4' };
+      return { isInvalid: true, validRange: '1-6' };
 
     case 'homework_lesson':
       if (choice >= 1 && choice <= 3) {
