@@ -16,7 +16,6 @@ import { CONSTANTS, MESSAGES } from './config/constants.js';
 import { examPrepHandler } from './handlers/examPrepHandler.js';
 import { homeworkHandler } from './handlers/homeworkHandler.js';
 import { practiceHandler } from './handlers/practiceHandler.js';
-import { stressHandler } from './handlers/stressHandler.js';
 
 export default async function handler(req, res) {
   const start = Date.now();
@@ -256,11 +255,6 @@ async function handleTextInput(user, text) {
     case 'homework_grade':
     case 'homework_confusion':
       return await homeworkHandler.handleHomeworkText(user, text);
-
-    // ===== STRESS/PANIC TEXT INPUTS =====
-
-    case 'stress_exam_date':
-      return await stressHandler.handleStressText(user, text);
 
     // ===== GENERAL GRADE INPUT =====
 
