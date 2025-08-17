@@ -1,7 +1,7 @@
 /**
  * The GOAT - Main Webhook Handler (Enhanced MVP)
- * Date: 2025-08-17 10:59:29 UTC
- * UPDATED: 3-option system with homework support and simplified exam prep
+ * Date: 2025-08-17 11:40:15 UTC
+ * CRITICAL FIX: Grade input context detection and routing
  */
 
 import { findOrCreateUser, updateUserActivity, updateUser } from './services/userService.js';
@@ -53,16 +53,18 @@ export default async function handler(req, res) {
 
     await updateUserActivity(user.id);
 
+    // CRITICAL FIX: Enhanced context detection
     const command = parseCommand(message, {
       current_menu: user.current_menu,
       has_current_question: !!user.current_question_id,
       expecting_answer: !!user.current_question_id,
-      expecting_text_input: isExpectingTextInput(user.current_menu)
+      expecting_text_input: isExpectingTextInput(user.current_menu) // Fixed function call
     });
 
     console.log(`🎯 Command parsed: ${command.type}`, {
       action: command.action,
       menuChoice: command.menuChoice,
+      text: command.text?.substring(0, 30),
       originalInput: command.originalInput?.substring(0, 50)
     });
 
@@ -133,7 +135,7 @@ export default async function handler(req, res) {
         }
         break;
 
-      // ===== TEXT INPUTS =====
+      // ===== TEXT INPUTS (CRITICAL FIX) =====
 
       case 'text_input':
         reply = await handleTextInput(user, command.text);
@@ -222,7 +224,7 @@ async function handleTextInput(user, text) {
     `📝 Text input: "${text.substring(0, 50)}" from user ${user.id}, menu: ${user.current_menu}`
   );
 
-  // Route text inputs to appropriate handlers based on current session
+  // Route text inputs to appropriate handlers based on current session/menu
   if (user.homework_session_id || user.current_menu?.startsWith('homework_')) {
     return await homeworkHandler.handleHomeworkText(user, text);
   }
@@ -231,6 +233,8 @@ async function handleTextInput(user, text) {
     return await examPrepHandler.handleExamPrepText(user, text);
   }
 
+  // Fallback - shouldn't happen with proper context detection
+  console.warn(`⚠️ Unexpected text input context: menu=${user.current_menu}, text="${text}"`);
   return await showWelcomeMenu(user);
 }
 
@@ -265,15 +269,21 @@ function generateHelpMessage(user) {
   );
 }
 
+// CRITICAL FIX: Proper text input context detection
 function isExpectingTextInput(currentMenu) {
   const textInputMenus = [
+    // Grade selection contexts (CRITICAL)
+    'exam_prep_grade',
+    'homework_grade',
+
+    // Other text input contexts
     'homework_confusion',
     'exam_prep_problems',
     'exam_prep_exam_date',
-    'exam_prep_time',
-    'homework_grade',
-    'exam_prep_grade'
+    'exam_prep_time'
   ];
 
-  return textInputMenus.includes(currentMenu);
+  const isExpecting = textInputMenus.includes(currentMenu);
+  console.log(`🔍 Text input check: menu="${currentMenu}", expecting=${isExpecting}`);
+  return isExpecting;
 }

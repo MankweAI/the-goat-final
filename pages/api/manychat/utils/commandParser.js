@@ -1,7 +1,7 @@
 /**
- * Enhanced Command Parser - 3-Option Welcome Menu
- * Date: 2025-08-17 10:59:29 UTC
- * UPDATED: Exam/Homework/Practice (removed confidence, simplified stress)
+ * Enhanced Command Parser - FIXED Grade Input Bug
+ * Date: 2025-08-17 11:40:15 UTC
+ * CRITICAL FIX: Grade input detection and text input handling
  */
 
 import { CONSTANTS } from '../config/constants.js';
@@ -11,7 +11,7 @@ export function parseCommand(input, context = {}) {
   const originalInput = input.trim();
 
   console.log(
-    `🔍 Parsing: "${trimmed}" | Menu: ${context.current_menu} | Question: ${!!context.has_current_question}`
+    `🔍 Parsing: "${trimmed}" | Menu: ${context.current_menu} | Question: ${!!context.has_current_question} | ExpectingText: ${context.expecting_text_input}`
   );
 
   // ✅ PRIORITY 1: Answer submissions (highest priority)
@@ -40,7 +40,17 @@ export function parseCommand(input, context = {}) {
     return globalCommand;
   }
 
-  // ✅ PRIORITY 3: Menu navigation
+  // ✅ PRIORITY 3: Text inputs (CRITICAL FIX - Check BEFORE menu parsing)
+  if (context.expecting_text_input || isTextInputContext(context.current_menu)) {
+    console.log(`✅ Text input context detected: ${context.current_menu}`);
+    return {
+      type: 'text_input',
+      text: originalInput,
+      originalInput
+    };
+  }
+
+  // ✅ PRIORITY 4: Menu navigation
   if (context.current_menu) {
     const menuResult = parseMenuInput(originalInput, context.current_menu);
     if (menuResult.isValid) {
@@ -58,18 +68,28 @@ export function parseCommand(input, context = {}) {
     }
   }
 
-  // ✅ PRIORITY 4: Text inputs (for homework/exam prep)
-  if (context.expecting_text_input) {
-    return {
-      type: 'text_input',
-      text: originalInput,
-      originalInput
-    };
-  }
-
   // ✅ PRIORITY 5: Fallback
   console.log(`⚠️ Unrecognized: "${trimmed}"`);
   return { type: 'unrecognized', originalInput };
+}
+
+// CRITICAL FIX: Proper text input context detection
+function isTextInputContext(currentMenu) {
+  const textInputMenus = [
+    // Grade selection contexts
+    'exam_prep_grade',
+    'homework_grade',
+
+    // Text input contexts
+    'homework_confusion',
+    'exam_prep_problems',
+    'exam_prep_exam_date',
+    'exam_prep_time'
+  ];
+
+  const isTextContext = textInputMenus.includes(currentMenu);
+  console.log(`🔍 Text input check: menu="${currentMenu}", isText=${isTextContext}`);
+  return isTextContext;
 }
 
 // Enhanced global commands (updated for new system)
