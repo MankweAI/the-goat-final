@@ -297,8 +297,6 @@ export class DateParser {
     return date;
   }
 
-<<<<<<< HEAD
-=======
   parseNumericDateFormat(input) {
     const match = input.match(/(\d{1,2})[\/\-](\d{1,2})/);
     if (!match) return null;
@@ -336,7 +334,7 @@ export class DateParser {
     return new Date(utcTime);
   }
 
->>>>>>> safeHouse
+
   formatConfirmation(date) {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const months = [
