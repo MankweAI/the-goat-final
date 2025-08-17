@@ -5,6 +5,7 @@
  * - Removed hardcoded "Back to homework" labels from lessons
  * - Added context-aware menu support
  * - Enhanced exam prep messaging
+ * - ADDED MISSING HOMEWORK.WELCOME_MESSAGE
  */
 
 // Core messaging with calm, supportive tone
@@ -71,12 +72,28 @@ export const MESSAGES = {
 
   // Homework support messaging
   HOMEWORK: {
+    // CRITICAL FIX: Added missing WELCOME_MESSAGE
+    WELCOME_MESSAGE:
+      `I'm here to help you with your Maths homework! 📚\n\n` +
+      `I can teach you methods and approaches (not give you answers).\n\n` +
+      `Ready to work together? Type "yes" to continue! 💪`,
+
     SUBJECT_PROMPT:
       `Which subject needs help?\n\n` +
       `1️⃣ Mathematics\n` +
       `2️⃣ Physics (Maths ready now)\n` +
       `3️⃣ Chemistry (Maths ready now)\n` +
       `4️⃣ Life Sciences (Maths ready now)`,
+
+    PROBLEM_TYPE_PROMPT:
+      `What type of problems are you working on?\n\n` +
+      `1️⃣ Equations (linear, quadratic)\n` +
+      `2️⃣ Word Problems\n` +
+      `3️⃣ Graphs & Functions\n` +
+      `4️⃣ Calculus (derivatives, integrals)\n` +
+      `5️⃣ Trigonometry\n` +
+      `6️⃣ Mixed/Other\n\n` +
+      `Pick a number! 📘`,
 
     CONFUSION_PROMPT:
       `Tell me what's confusing you.\n\n` +
@@ -85,6 +102,12 @@ export const MESSAGES = {
       `• "Word problems are hard to set up"\n` +
       `• "I keep making calculation errors"\n\n` +
       `What's your challenge? 🤔`,
+
+    ACADEMIC_INTEGRITY_REMINDER:
+      `🎯 **Academic Integrity Note:**\n` +
+      `I'll teach you methods and approaches, not give direct answers. This helps you truly understand and succeed on your own! 📚`,
+
+    PRACTICE_ENCOURAGEMENT: `You're building strong problem-solving skills! Keep practicing these methods on your homework. 💪`,
 
     VALIDATION_RESPONSE: `I hear you. Let's work through this together step by step. 🌱`
   },
@@ -103,9 +126,7 @@ export const MESSAGES = {
       `Take your time. Breathe.\n\n` +
       `You're building knowledge step by step. 🌱\n\n` +
       `Type "practice" when ready to continue.`
-  },
-
-
+  }
 };
 
 export const CONSTANTS = {
