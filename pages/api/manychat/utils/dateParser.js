@@ -2,6 +2,8 @@
  * Enhanced Date Parser for Natural Language Input
  * Supports: "22 Aug 7pm", "tomorrow 2pm", "next Friday 9:30", "skip"
  * Timezone: Africa/Johannesburg (UTC+2)
+ * Date: 2025-08-17 17:13:23 UTC
+ * MINIMAL VERSION - Only what's needed for date parsing fix
  */
 
 export class DateParser {
@@ -16,7 +18,7 @@ export class DateParser {
     console.log(`🕐 Parsing date input: "${cleaned}"`);
 
     // Handle skip
-    if (cleaned === 'skip' || cleaned === 'not sure') {
+    if (cleaned === 'skip' || cleaned === 'not sure' || cleaned === 'later') {
       return {
         success: true,
         isSkipped: true,
@@ -61,7 +63,7 @@ export class DateParser {
       }
 
       // Convert to Africa/Johannesburg timezone
-      const examDate = this.toJohannesburgTime(parsedDate);
+      const examDate = parsedDate;
       const now = new Date();
       const hoursAway = Math.round((examDate - now) / (1000 * 60 * 60));
 
@@ -96,7 +98,7 @@ export class DateParser {
   }
 
   matchesTomorrow(input) {
-    return /tomorrow|tom/.test(input);
+    return /tomorrow|tom\b/.test(input);
   }
 
   matchesDateMonth(input) {
@@ -175,7 +177,6 @@ export class DateParser {
 
     const date = new Date(currentYear, month, day);
 
-    // If date is in the past, assume next year
     if (date < new Date()) {
       date.setFullYear(currentYear + 1);
     }
@@ -252,7 +253,6 @@ export class DateParser {
     if (input.includes('today') || input.includes('tonight')) {
       // Use today
     } else {
-      // Assume today if time is in future, otherwise tomorrow
       const timeMatch = input.match(/(\d{1,2})(:\d{2})?\s*(am|pm)/i);
       if (timeMatch) {
         let hours = parseInt(timeMatch[1]);
@@ -265,7 +265,7 @@ export class DateParser {
         testDate.setHours(hours, 0, 0, 0);
 
         if (testDate <= new Date()) {
-          date.setDate(date.getDate() + 1); // Tomorrow
+          date.setDate(date.getDate() + 1);
         }
       }
     }
@@ -283,13 +283,6 @@ export class DateParser {
     }
 
     return date;
-  }
-
-  toJohannesburgTime(date) {
-    // Simple UTC+2 conversion
-    const utcTime = date.getTime();
-    const offsetMs = 2 * 60 * 60 * 1000; // UTC+2
-    return new Date(utcTime + offsetMs);
   }
 
   formatConfirmation(date) {
