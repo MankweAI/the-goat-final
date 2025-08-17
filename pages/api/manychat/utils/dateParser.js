@@ -2,6 +2,7 @@
  * Enhanced Date Parser for Natural Language Input
  * Supports: "22 Aug 7pm", "tomorrow 2pm", "next Friday 9:30", "skip"
  * Timezone: Africa/Johannesburg (UTC+2)
+ * Date: 2025-08-17 15:36:12 UTC
  */
 
 export class DateParser {
@@ -16,7 +17,7 @@ export class DateParser {
     console.log(`🕐 Parsing date input: "${cleaned}"`);
 
     // Handle skip
-    if (cleaned === 'skip' || cleaned === 'not sure') {
+    if (cleaned === 'skip' || cleaned === 'not sure' || cleaned === 'later') {
       return {
         success: true,
         isSkipped: true,
@@ -45,6 +46,10 @@ export class DateParser {
       } else if (this.matchesTimeOnly(cleaned)) {
         parsedDate = this.parseTimeOnlyFormat(cleaned);
         timeIncluded = true;
+      } else if (this.matchesNumericDate(cleaned)) {
+        parsedDate = this.parseNumericDateFormat(cleaned);
+        timeIncluded =
+          cleaned.includes('pm') || cleaned.includes('am') || /\d{1,2}:\d{2}/.test(cleaned);
       }
 
       if (!parsedDate) {
@@ -96,7 +101,7 @@ export class DateParser {
   }
 
   matchesTomorrow(input) {
-    return /tomorrow|tom/.test(input);
+    return /tomorrow|tom\b/.test(input);
   }
 
   matchesDateMonth(input) {
@@ -116,6 +121,10 @@ export class DateParser {
       /^\d{1,2}(:\d{2})?\s*(am|pm)$/i.test(input) ||
       /^(today|tonight)\s+\d{1,2}(:\d{2})?\s*(am|pm)?/i.test(input)
     );
+  }
+
+  matchesNumericDate(input) {
+    return /\d{1,2}\/\d{1,2}|\d{1,2}-\d{1,2}/.test(input);
   }
 
   parseTomorrowFormat(input) {
@@ -285,11 +294,41 @@ export class DateParser {
     return date;
   }
 
+  parseNumericDateFormat(input) {
+    const match = input.match(/(\d{1,2})[\/\-](\d{1,2})/);
+    if (!match) return null;
+
+    const day = parseInt(match[1]);
+    const month = parseInt(match[2]) - 1; // JavaScript months are 0-based
+    const currentYear = new Date().getFullYear();
+
+    const date = new Date(currentYear, month, day);
+
+    // If date is in the past, assume next year
+    if (date < new Date()) {
+      date.setFullYear(currentYear + 1);
+    }
+
+    const timeMatch = input.match(/(\d{1,2})(:\d{2})?\s*(am|pm)/i);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1]);
+      const minutes = timeMatch[2] ? parseInt(timeMatch[2].slice(1)) : 0;
+      const period = timeMatch[3].toLowerCase();
+
+      if (period === 'pm' && hours < 12) hours += 12;
+      if (period === 'am' && hours === 12) hours = 0;
+
+      date.setHours(hours, minutes, 0, 0);
+    }
+
+    return date;
+  }
+
   toJohannesburgTime(date) {
-    // Simple UTC+2 conversion
+    // Simple UTC+2 conversion for South Africa
     const utcTime = date.getTime();
     const offsetMs = 2 * 60 * 60 * 1000; // UTC+2
-    return new Date(utcTime + offsetMs);
+    return new Date(utcTime);
   }
 
   formatConfirmation(date) {
