@@ -49,6 +49,9 @@ export const MESSAGES = {
       `• "next Monday"\n` +
       `• "in 3 days"\n\n` +
       `If you're not sure, say "skip". ⏳`,
+    SUBJECT_PROMPT:
+      `I specialize in Maths for now. Other subjects coming soon! 📚\n\n` +
+      `Ready to start with Maths? Type "yes" to continue! 💪`,
 
     PLAN_OFFER_LONG:
       `I can send a short lesson + practice each day until then.\n\n` +
