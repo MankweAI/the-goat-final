@@ -1,8 +1,7 @@
 /**
- * Exam Prep Handler (Formerly Stress) - Simplified
- * Date: 2025-08-17 10:50:37 UTC
- * REMOVED: Stress level selection (1-4) step
- * FOCUS: Grade → Subject → Exam Date → Study Plan
+ * Exam Prep Handler - FIXED Plan Action Handling + Improved Menu
+ * Date: 2025-08-17 12:37:33 UTC
+ * CRITICAL FIX: Added handleExamPrepPlanAction method and improved menu text
  */
 
 import { executeQuery } from '../config/database.js';
@@ -90,28 +89,33 @@ export const examPrepHandler = {
       }
     }
 
-    if (step === 'plan_action') {
-      if (choice === 1) {
-        // Start now
-        return await this.startLesson(user, session);
-      }
-      if (choice === 2) {
-        // Switch topic
-        const newTopic = session.current_topic === 'calculus' ? 'trigonometry' : 'calculus';
-        session.current_topic = newTopic;
-        await saveSession(session);
-        return await this.startLesson(user, session);
-      }
-      if (choice === 3) {
-        // Cancel
-        await endExamPrepSession(session.id);
-        await clearExamPrepState(user.id);
-        return `All good. When you're ready to prep, just say "exam" or type "1"! 📅`;
-      }
-      return `Please choose 1, 2, or 3 from the plan options. ✨`;
+    return `I didn't catch that. Let's try again. 🌱`;
+  },
+
+  // CRITICAL FIX: NEW METHOD - Handle exam prep plan actions
+  async handleExamPrepPlanAction(user, action) {
+    const session = await getOrCreateExamPrepSession(user.id);
+
+    console.log(`📅 Exam prep plan action: ${action}`);
+
+    if (action === 'begin_review') {
+      return await this.startLesson(user, session);
     }
 
-    return `I didn't catch that. Let's try again. 🌱`;
+    if (action === 'switch_topic') {
+      const newTopic = session.current_topic === 'calculus' ? 'trigonometry' : 'calculus';
+      session.current_topic = newTopic;
+      await saveSession(session);
+      return await this.startLesson(user, session);
+    }
+
+    if (action === 'main_menu') {
+      await endExamPrepSession(session.id);
+      await clearExamPrepState(user.id);
+      return `All good! When you're ready to prep again, just say "exam". 📅\n\nType "menu" for main options! ✨`;
+    }
+
+    return `Please choose 1, 2, or 3 from the plan options. ✨`;
   },
 
   // Handle text inputs for exam prep
@@ -218,7 +222,7 @@ export const examPrepHandler = {
     }
   },
 
-  // Rest of methods simplified but functional
+  // Rest of methods (unchanged but included for completeness)
   async startLesson(user, session) {
     const topic = session.current_topic || 'calculus';
 
@@ -357,7 +361,7 @@ export const examPrepHandler = {
   }
 };
 
-// Helper functions (simplified)
+// Helper functions (mostly unchanged)
 async function getOrCreateExamPrepSession(userId) {
   return await executeQuery(async (supabase) => {
     const { data: existing } = await supabase
@@ -445,6 +449,7 @@ function generateProblemDetailsPrompt() {
   );
 }
 
+// UPDATED: Improved plan generation with better menu options
 async function generateShortPlan(session) {
   session.current_topic = 'calculus';
   session.session_state = { step: 'plan_action' };
@@ -464,8 +469,8 @@ async function generateShortPlan(session) {
     planText += `• Build exam confidence\n\n`;
   }
 
-  planText +=
-    `Ready to start?\n` + `1️⃣ Begin review\n` + `2️⃣ Switch to trigonometry\n` + `3️⃣ Take a break`;
+  // IMPROVED: Better menu options per user feedback
+  planText += `Ready to start?\n` + `1️⃣ Begin\n` + `2️⃣ Switch topics\n` + `3️⃣ Main Menu`;
 
   return planText;
 }
@@ -487,9 +492,9 @@ async function generateLongPlan(session) {
     `• 10 min: Practice questions\n` +
     `• 5 min: Confidence building\n\n` +
     `Today's focus: Core concepts\n\n` +
-    `1️⃣ Start today's session\n` +
-    `2️⃣ Switch focus topic\n` +
-    `3️⃣ Adjust schedule`
+    `1️⃣ Begin\n` +
+    `2️⃣ Switch topics\n` +
+    `3️⃣ Main Menu`
   );
 }
 
@@ -588,5 +593,3 @@ function parseDateString(dateStr) {
     return null;
   }
 }
-
-

@@ -1,7 +1,7 @@
 /**
  * The GOAT - Main Webhook Handler (Enhanced MVP)
- * Date: 2025-08-17 12:15:32 UTC
- * CRITICAL FIX: Defensive programming for command object structure
+ * Date: 2025-08-17 12:37:33 UTC
+ * CRITICAL FIX: Added missing exam prep plan action handling
  */
 
 import { findOrCreateUser, updateUserActivity, updateUser } from './services/userService.js';
@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       expecting_text_input: isExpectingTextInput(user.current_menu)
     });
 
-    // CRITICAL FIX: Defensive programming - ensure command has required properties
+    // Defensive programming - ensure command has required properties
     const safeCommand = {
       type: command.type || 'unrecognized',
       action: command.action || null,
@@ -69,7 +69,7 @@ export default async function handler(req, res) {
       answer: command.answer || null,
       validRange: command.validRange || '1-5',
       originalInput: command.originalInput || message,
-      ...command // Spread original command to preserve any extra properties
+      ...command
     };
 
     console.log(`🎯 Command parsed: ${safeCommand.type}`, {
@@ -108,9 +108,18 @@ export default async function handler(req, res) {
         }
         break;
 
-      // ===== MENU NAVIGATION (FIXED) =====
+      // ===== MENU NAVIGATION =====
 
       case 'exam_prep_subject_select':
+        reply = await examPrepHandler.handleExamPrepMenu(user, safeCommand.menuChoice || 1);
+        break;
+
+      // CRITICAL FIX: Added missing exam prep plan action handling
+      case 'exam_prep_plan_action':
+        reply = await examPrepHandler.handleExamPrepPlanAction(user, safeCommand.action);
+        break;
+
+      case 'exam_prep_plan_decision_select':
         reply = await examPrepHandler.handleExamPrepMenu(user, safeCommand.menuChoice || 1);
         break;
 
@@ -218,7 +227,7 @@ export default async function handler(req, res) {
   }
 }
 
-// Core functions (unchanged)
+// Core functions (unchanged except for isExpectingTextInput)
 async function showWelcomeMenu(user) {
   await updateUser(user.id, {
     current_menu: 'welcome',

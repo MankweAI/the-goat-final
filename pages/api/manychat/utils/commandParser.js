@@ -1,7 +1,7 @@
 /**
- * Enhanced Command Parser - FIXED Command Structure Bug
- * Date: 2025-08-17 12:15:32 UTC
- * CRITICAL FIX: Consistent command object structure across all types
+ * Enhanced Command Parser - FIXED Exam Prep Plan Menu Bug
+ * Date: 2025-08-17 12:37:33 UTC
+ * CRITICAL FIX: Added missing exam_prep_plan and exam_prep_plan_decision menu cases
  */
 
 import { CONSTANTS } from '../config/constants.js';
@@ -22,7 +22,6 @@ export function parseCommand(input, context = {}) {
         type: CONSTANTS.COMMAND_TYPES.ANSWER,
         answer: answerResult.answer,
         originalInput,
-        // Ensure all commands have these properties
         menuChoice: null,
         action: null,
         text: null,
@@ -48,7 +47,6 @@ export function parseCommand(input, context = {}) {
     console.log(`✅ Global command: ${globalCommand.type}`);
     return {
       ...globalCommand,
-      // Ensure consistent structure
       menuChoice: null,
       text: null,
       validRange: null
@@ -62,7 +60,6 @@ export function parseCommand(input, context = {}) {
       type: 'text_input',
       text: originalInput,
       originalInput,
-      // Consistent structure
       menuChoice: null,
       action: null,
       answer: null,
@@ -77,7 +74,6 @@ export function parseCommand(input, context = {}) {
       console.log(`✅ Menu command:`, menuResult.command);
       return {
         ...menuResult.command,
-        // Ensure menuChoice is always set
         menuChoice: menuResult.command.menuChoice || parseInt(originalInput.trim()) || 1,
         text: null,
         answer: null,
@@ -91,7 +87,6 @@ export function parseCommand(input, context = {}) {
         attempted: originalInput,
         validRange: menuResult.validRange,
         originalInput,
-        // Consistent structure
         menuChoice: null,
         action: null,
         text: null,
@@ -105,7 +100,6 @@ export function parseCommand(input, context = {}) {
   return {
     type: 'unrecognized',
     originalInput,
-    // Consistent structure
     menuChoice: null,
     action: null,
     text: null,
@@ -157,7 +151,7 @@ function parseGlobalCommands(trimmed, originalInput) {
   return { type: 'unrecognized', originalInput };
 }
 
-// FIXED: Menu input parsing with consistent structure
+// FIXED: Menu input parsing with ALL missing menu cases
 function parseMenuInput(input, currentMenu) {
   const number = parseInt(input.trim());
 
@@ -182,7 +176,7 @@ function parseMenuInput(input, currentMenu) {
         command: {
           ...actions[number],
           originalInput: input,
-          menuChoice: number // CRITICAL FIX: Always set menuChoice
+          menuChoice: number
         }
       };
     }
@@ -196,13 +190,51 @@ function parseMenuInput(input, currentMenu) {
         isValid: true,
         command: {
           type: 'exam_prep_subject_select',
-          subject: 'math', // MVP: all lead to math
+          subject: 'math',
           originalInput: input,
-          menuChoice: number // CRITICAL FIX: Always set menuChoice
+          menuChoice: number
         }
       };
     }
     return { isInvalid: true, validRange: '1-4', reason: 'out_of_range' };
+  }
+
+  // CRITICAL FIX: Exam prep plan menu (the missing case!)
+  if (currentMenu === 'exam_prep_plan') {
+    if (number >= 1 && number <= 3) {
+      const actions = {
+        1: 'begin_review',
+        2: 'switch_topic',
+        3: 'main_menu'
+      };
+      return {
+        isValid: true,
+        command: {
+          type: 'exam_prep_plan_action',
+          action: actions[number],
+          originalInput: input,
+          menuChoice: number
+        }
+      };
+    }
+    return { isInvalid: true, validRange: '1-3', reason: 'out_of_range' };
+  }
+
+  // CRITICAL FIX: Exam prep plan decision menu
+  if (currentMenu === 'exam_prep_plan_decision') {
+    if (number >= 1 && number <= 2) {
+      const actions = { 1: 'yes_to_plan', 2: 'no_to_plan' };
+      return {
+        isValid: true,
+        command: {
+          type: 'exam_prep_plan_decision_select',
+          decision: actions[number],
+          originalInput: input,
+          menuChoice: number
+        }
+      };
+    }
+    return { isInvalid: true, validRange: '1-2', reason: 'out_of_range' };
   }
 
   // Homework subject menu
@@ -212,9 +244,9 @@ function parseMenuInput(input, currentMenu) {
         isValid: true,
         command: {
           type: 'homework_subject_select',
-          subject: 'math', // MVP: all lead to math
+          subject: 'math',
           originalInput: input,
-          menuChoice: number // CRITICAL FIX: Always set menuChoice
+          menuChoice: number
         }
       };
     }
@@ -238,7 +270,7 @@ function parseMenuInput(input, currentMenu) {
           type: 'homework_problem_type_select',
           problem_type: problemTypes[number],
           originalInput: input,
-          menuChoice: number // CRITICAL FIX: Always set menuChoice
+          menuChoice: number
         }
       };
     }
@@ -255,7 +287,7 @@ function parseMenuInput(input, currentMenu) {
           type: 'homework_method_action',
           action: actions[number],
           originalInput: input,
-          menuChoice: number // CRITICAL FIX: Always set menuChoice
+          menuChoice: number
         }
       };
     }
@@ -272,7 +304,7 @@ function parseMenuInput(input, currentMenu) {
           type: 'lesson_action',
           action: actions[number],
           originalInput: input,
-          menuChoice: number // CRITICAL FIX: Always set menuChoice
+          menuChoice: number
         }
       };
     }
@@ -289,7 +321,7 @@ function parseMenuInput(input, currentMenu) {
           type: 'practice_continue_select',
           action: actions[number],
           originalInput: input,
-          menuChoice: number // CRITICAL FIX: Always set menuChoice
+          menuChoice: number
         }
       };
     }
@@ -297,6 +329,7 @@ function parseMenuInput(input, currentMenu) {
   }
 
   // Unknown menu
+  console.warn(`⚠️ Unknown menu type: ${currentMenu}`);
   return {
     isInvalid: true,
     validRange: getMenuRange(currentMenu),
@@ -308,6 +341,8 @@ function getMenuRange(menu) {
   const ranges = {
     welcome: '1-3',
     exam_prep_subject: '1-4',
+    exam_prep_plan: '1-3', // CRITICAL FIX: Added missing range
+    exam_prep_plan_decision: '1-2', // CRITICAL FIX: Added missing range
     homework_subject: '1-4',
     homework_problem_type: '1-6',
     homework_method: '1-3',
@@ -317,7 +352,7 @@ function getMenuRange(menu) {
   return ranges[menu] || '1-5';
 }
 
-// Answer validation
+// Answer validation (unchanged)
 function parseAnswerInput(input) {
   const trimmed = input.trim().toUpperCase();
   const validAnswers = CONSTANTS.VALID_ANSWERS;
