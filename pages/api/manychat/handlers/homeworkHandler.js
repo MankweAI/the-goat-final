@@ -48,7 +48,7 @@ export const homeworkHandler = {
         session.chosen_subject_name = 'Mathematics';
         session.session_state = { step: 'ask_problem_type' };
         await saveHomeworkSession(session);
-        await updateUser(user.id, { current_menu: 'homework_problem_type' });
+        await updateUser(user.id, { current_menu: 'homework_type' });
 
         return `Perfect! Let's help with your Maths homework.\n\n${MESSAGES.HOMEWORK.PROBLEM_TYPE_PROMPT}`;
       }
@@ -139,7 +139,7 @@ export const homeworkHandler = {
         session.chosen_subject_name = 'Mathematics';
         session.session_state = { step: 'ask_problem_type' };
         await saveHomeworkSession(session);
-        await updateUser(user.id, { current_menu: 'homework_problem_type' });
+        await updateUser(user.id, { current_menu: 'homework_type' });
 
         return `Perfect! Let's help with your Maths homework.\n\n${MESSAGES.HOMEWORK.PROBLEM_TYPE_PROMPT}`;
       } else {

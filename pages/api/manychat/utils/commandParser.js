@@ -223,11 +223,11 @@ function parseMenuInput(input, currentMenu) {
 
     // NOTE: homework_subject is now handled as text input, not menu input
 
-    case 'homework_problem_type':
+    case 'homework_type':
       if (choice >= 1 && choice <= 6) {
         return {
           isValid: true,
-          command: { type: 'homework_problem_type', menuChoice: choice }
+          command: { type: 'homework_type', menuChoice: choice }
         };
       }
       return { isInvalid: true, validRange: '1-6' };
