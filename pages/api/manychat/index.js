@@ -172,6 +172,10 @@ export default async function handler(req, res) {
         reply = `Pick a number from the options above (${safeCommand.validRange}). ✨`;
         break;
 
+      case 'exam_prep_subject_select':
+        reply = await examPrepHandler.handleExamPrepMenu(user, safeCommand.menuChoice || 1);
+        break;
+
       // ===== FALLBACK =====
 
       default:
