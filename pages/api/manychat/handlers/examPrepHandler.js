@@ -200,7 +200,6 @@ export const examPrepHandler = {
       case 'main_menu':
         await updateUser(user.id, {
           current_menu: 'welcome',
-          panic_session_id: null
         });
         return MESSAGES.WELCOME.MAIN_MENU;
 
@@ -436,7 +435,6 @@ async function saveSession(session) {
 async function markUserInExamPrepFlow(userId, sessionId, currentMenu) {
   await updateUser(userId, {
     current_menu: currentMenu,
-    panic_session_id: sessionId,
     last_active_at: new Date().toISOString()
   });
 }

@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     }
 
     console.log(
-      `👤 User ${user.id} | Menu: ${user.current_menu} | Sessions: E:${!!user.panic_session_id} H:${!!user.homework_session_id}`
+      `👤 User ${user.id} | Menu: ${user.current_menu} | H:${!!user.homework_session_id}`
     );
 
     await updateUserActivity(user.id);
@@ -149,15 +149,6 @@ export default async function handler(req, res) {
         reply = await practiceHandler.handlePracticeContinue(user, safeCommand.action);
         break;
 
-      // ===== STRESS/PANIC SUPPORT (Legacy) =====
-
-      case 'stress_level':
-        reply = await stressHandler.handleStressMenu(user, safeCommand.menuChoice);
-        break;
-
-      case 'stress_subject':
-        reply = await stressHandler.handleStressMenu(user, safeCommand.menuChoice);
-        break;
 
       // ===== TEXT INPUT HANDLING =====
 
@@ -218,7 +209,6 @@ async function showWelcomeMenu(user) {
   await updateUser(user.id, {
     current_menu: 'welcome',
     current_question_id: null,
-    panic_session_id: null,
     homework_session_id: null
   });
 

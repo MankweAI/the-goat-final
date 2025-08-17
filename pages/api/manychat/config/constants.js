@@ -105,28 +105,7 @@ export const MESSAGES = {
       `Type "practice" when ready to continue.`
   },
 
-  // Stress support (legacy)
-  STRESS: {
-    LEVEL_PROMPT:
-      `How stressed are you feeling right now?\n\n` +
-      `1️⃣ Completely overwhelmed 😰\n` +
-      `2️⃣ Very stressed 😟\n` +
-      `3️⃣ Somewhat worried 😐\n` +
-      `4️⃣ Just want to be prepared 😌`,
 
-    SUBJECT_PROMPT:
-      `Which subject is weighing on you most?\n\n` +
-      `1️⃣ Mathematics\n` +
-      `2️⃣ Physics\n` +
-      `3️⃣ Chemistry\n` +
-      `4️⃣ Life Sciences`,
-
-    EXAM_DATE_PROMPT:
-      `When is your exam? (e.g., 22 Aug 7pm)\n\n` + `If you're not sure, say "skip". ⏳`,
-
-    VALIDATION_HIGH: `I feel you. This is hard, but you're not alone. 💙`,
-    VALIDATION_LOW: `Smart to prepare early. You've got this! 💪`
-  }
 };
 
 export const CONSTANTS = {

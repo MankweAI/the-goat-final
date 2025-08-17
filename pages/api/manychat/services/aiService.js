@@ -121,7 +121,6 @@ Respond in valid JSON format only:
       method_needed: `step-by-step approach to ${problemType}`,
       prerequisite_knowledge: ['basic algebra'],
       teaching_focus: `understanding the method for ${problemType}`,
-      confidence_score: 0.3,
       reasoning: 'Fallback analysis for homework help'
     };
   }
@@ -283,7 +282,6 @@ Respond in valid JSON format only:
       console.log(`✅ New refinement generated and cached:`, {
         concepts: validatedRefinement.concepts,
         clarity: validatedRefinement.clarity_level,
-        confidence: validatedRefinement.confidence_score
       });
 
       return validatedRefinement;
@@ -411,7 +409,6 @@ Respond in valid JSON format only:
         ? analysis.clarity_level
         : 'needs_followup',
       follow_up_needed: Boolean(analysis.follow_up_needed),
-      confidence_score: Math.min(Math.max(analysis.confidence_score || 0.5, 0), 1),
       specific_gap: analysis.specific_gap || '',
       intervention_focus: analysis.intervention_focus || '',
       method_needed: analysis.method_needed || '',
@@ -442,7 +439,6 @@ Respond in valid JSON format only:
       emotional_state: 'confused',
       clarity_level: 'needs_followup',
       follow_up_needed: true,
-      confidence_score: 0.3,
       specific_gap: '',
       intervention_focus: '',
       reasoning: 'Fallback analysis due to processing error'
