@@ -126,7 +126,26 @@ export const MESSAGES = {
       `Take your time. Breathe.\n\n` +
       `You're building knowledge step by step. 🌱\n\n` +
       `Type "practice" when ready to continue.`
-  }
+    },
+  
+  CONVERSATION_START:
+  `Let's prepare for your upcoming test! To create the best study plan for you, could you tell me:
+
+1. What grade you're in
+2. Which subject the test is for
+3. Any specific topics you're struggling with
+4. When the test is happening
+
+Just chat normally - I'll figure out the details! 😊`,
+
+CONVERSATION_FALLBACK:
+  `I'm having a bit of trouble understanding. Could you please tell me:
+  
+• What grade you're in (10, 11, or varsity)
+• Which subject your test is for
+• When your test is happening
+  
+This will help me create the right study plan for you! 📚`
 };
 
 export const CONSTANTS = {
