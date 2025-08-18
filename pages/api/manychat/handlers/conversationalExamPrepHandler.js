@@ -1,234 +1,286 @@
 /**
- * Conversational Exam Prep Handler
- * Date: 2025-08-18 10:44:39 UTC
+ * Conversational Exam Prep Handler - Emergency Fix
+ * Date: 2025-08-18 13:41:27 UTC
  * Author: sophoniagoat
+ *
+ * EMERGENCY: Insert only absolutely essential fields to avoid VARCHAR(20) error
  */
 
 import { executeQuery } from '../config/database.js';
 import { updateUser } from '../services/userService.js';
-import { conversationService } from '../services/conversationService.js';
 import { MESSAGES } from '../config/constants.js';
-import { dateParser } from '../utils/dateParser.js';
 
 export const conversationalExamPrepHandler = {
   /**
-   * Start conversational exam prep flow
+   * Start conversational exam prep with minimal data insertion
    */
-
   async startConversation(user) {
     try {
-      console.log(`🚀 Starting conversational exam prep for user ${user.id}`);
+      console.log(`🎓 Starting conversational exam prep for user ${user.id}`);
 
-      // Create new exam prep session
-      const session = await this.createExamPrepSession(user.id);
+      // EMERGENCY FIX: Insert only the most essential fields
+      const sessionId = await executeQuery(async (supabase) => {
+        // Insert minimal data first - only required fields
+        const minimalData = {
+          user_id: user.id,
+          // Don't insert status yet - it might be the problematic field
+          created_at: new Date().toISOString()
+        };
+
+        console.log('🚨 EMERGENCY: Inserting minimal data:', JSON.stringify(minimalData));
+
+        const { data, error } = await supabase
+          .from('exam_prep_sessions')
+          .insert(minimalData)
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('❌ Minimal session creation failed:', error);
+          throw new Error(`Failed to create exam prep session: ${error.message}`);
+        }
+
+        console.log('✅ Minimal session created with ID:', data.id);
+        return data.id;
+      });
+
+      // Now try to update with additional fields one by one to identify the problem
+      await this.updateSessionSafely(sessionId, {
+        status: 'active'
+      });
+
+      await this.updateSessionSafely(sessionId, {
+        conversation_mode: true
+      });
+
+      // Create conversation record
+      const conversationId = await executeQuery(async (supabase) => {
+        const { data, error } = await supabase
+          .from('exam_prep_conversations')
+          .insert({
+            session_id: sessionId,
+            user_id: user.id,
+            conversation_data: {},
+            created_at: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('❌ Conversation creation failed:', error);
+          // Don't throw here, continue without conversation record
+          return null;
+        }
+
+        return data.id;
+      });
 
       // Update user state
       await updateUser(user.id, {
         current_menu: 'exam_prep_conversation',
-        exam_prep_session_id: session.id,
-        last_active_at: new Date().toISOString()
+        exam_prep_session_id: sessionId,
+        conversation_context: JSON.stringify({
+          session_id: sessionId,
+          conversation_id: conversationId,
+          step: 'greeting'
+        })
       });
 
-      // Helper function to safely truncate all string values
-      const safeTruncate = (value, maxLength = 20) => {
-        if (value === null || value === undefined) return null;
-        if (typeof value !== 'string') return value;
-        return value.substring(0, maxLength);
-      };
-
-      const sessionData = {
-        user_id: user.id,
-        status: safeTruncate('active'),
-        conversation_mode: true,
-
-        // Truncate any other fields that might be set
-        focus_subject: safeTruncate(user.subject),
-        exam_type: safeTruncate(user.exam_type),
-        grade_level: safeTruncate(user.grade),
-        difficulty_level: safeTruncate('medium'),
-
-        // Add debugging info
-        context_data: JSON.stringify({ debug: 'Truncated values for safe insertion' }),
-
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // Log the exact data being inserted for debugging
-      console.log('Inserting session data:', JSON.stringify(sessionData));
-
-      // Create exam prep session
- const sessionId = await executeQuery(async (supabase) => {
-   const { data, error } = await supabase
-     .from('exam_prep_sessions')
-     .insert(sessionData)
-     .select('id')
-     .single();
-
-   if (error) {
-     console.error('❌ Session creation failed:', error);
-     throw new Error('Failed to create exam prep session');
-   }
-   return data.id;
- });
-
-      // Initial message
-      return MESSAGES.EXAM_PREP.CONVERSATION_START;
+      // Return greeting message
+      return this.getGreetingMessage();
     } catch (error) {
       console.error('❌ Conversational exam prep start error:', error);
-      return `Eish, I'm having trouble getting started. Let's try the regular way instead. ${MESSAGES.WELCOME.GRADE_PROMPT}`;
+
+      // Fallback to traditional exam prep
+      return (
+        `I'm having trouble starting the conversational setup. Let's use the traditional exam prep instead.\n\n` +
+        `What grade are you in? (Type 10, 11, or 12)`
+      );
     }
   },
 
   /**
-   * Handle conversation message from user
+   * Safely update session with individual field testing
+   */
+  async updateSessionSafely(sessionId, updateData) {
+    try {
+      for (const [key, value] of Object.entries(updateData)) {
+        console.log(`🔍 Testing field: ${key} = ${value}`);
+
+        // Test each field individually
+        await executeQuery(async (supabase) => {
+          const { error } = await supabase
+            .from('exam_prep_sessions')
+            .update({ [key]: value })
+            .eq('id', sessionId);
+
+          if (error) {
+            console.error(`❌ Field ${key} caused error:`, error);
+            // Log the problematic field but don't throw
+            if (error.code === '22001') {
+              console.error(`🚨 FOUND PROBLEM FIELD: ${key} with value: ${value}`);
+              console.error(`🚨 Value length: ${String(value).length}`);
+            }
+          } else {
+            console.log(`✅ Field ${key} updated successfully`);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('❌ Safe update error:', error);
+    }
+  },
+
+  /**
+   * Get greeting message
+   */
+  getGreetingMessage() {
+    return (
+      `Hi! I'm here to help you create a personalized study plan for your upcoming exam. 📚✨\n\n` +
+      `Let's start with a few quick questions:\n\n` +
+      `What grade are you in? (Type 10, 11, or 12)`
+    );
+  },
+
+  /**
+   * Handle conversation messages (simplified)
    */
   async handleConversationMessage(user, message) {
     try {
-      console.log(`💬 Processing conversation message from user ${user.id}`);
-
-      // Get current session
-      const session = await this.getExamPrepSession(user.id);
-      if (!session) {
-        return {
-          message: `I seem to have lost track of our conversation. Let's start again. ${MESSAGES.WELCOME.GRADE_PROMPT}`,
-          shouldRestart: true
-        };
+      // Parse current context
+      let context = {};
+      try {
+        context = user.conversation_context ? JSON.parse(user.conversation_context) : {};
+      } catch (e) {
+        context = { step: 'greeting' };
       }
 
-      // Process message with conversationService
-      const response = await conversationService.handleExamPrepConversation(user, message, session);
-
-      // Update session state based on conversation progress
-      await this.updateSessionState(session.id, response);
-
-      // Check if we've collected all required data
-      if (response.is_data_complete) {
-        await updateUser(user.id, {
-          current_menu: 'exam_prep_plan'
-        });
-
-        // Generate and show study plan
-        return {
-          message: response.message + '\n\n' + (await this.generateStudyPlan(user, session)),
-          conversation_complete: true
-        };
+      // Simple conversation flow without database dependencies
+      switch (context.step) {
+        case 'greeting':
+          return this.handleGradeInput(user, message, context);
+        case 'grade_collected':
+          return this.handleSubjectInput(user, message, context);
+        case 'subject_collected':
+          return this.handleExamDateInput(user, message, context);
+        default:
+          return this.completeConversation(user, context);
       }
-
-      return {
-        message: response.message,
-        conversation_complete: false
-      };
     } catch (error) {
-      console.error('❌ Conversation handling error:', error);
+      console.error('❌ Conversation message error:', error);
       return {
-        message:
-          "I'm having trouble understanding. Could you tell me which grade you're in and what subject your exam is for?",
+        message: `I encountered an issue. Let's start over. What grade are you in? (Type 10, 11, or 12)`,
         conversation_complete: false
       };
     }
   },
 
   /**
-   * Create a new exam prep session
+   * Handle grade input
    */
-  async createExamPrepSession(userId) {
-    return executeQuery(async (supabase) => {
-      const { data, error } = await supabase
-        .from('exam_prep_sessions')
-        .insert({
-          user_id: userId,
-          status: 'active',
-          session_state: { step: 'conversation', started_at: new Date().toISOString() },
-          created_at: new Date().toISOString(),
-          conversation_mode: true
-        })
-        .select()
-        .single();
+  async handleGradeInput(user, message, context) {
+    const grade = message.trim();
 
-      if (error) {
-        console.error('❌ Session creation failed:', error);
-        throw new Error('Failed to create exam prep session');
-      }
-
-      return data;
-    });
-  },
-
-  /**
-   * Get current exam prep session
-   */
-  async getExamPrepSession(userId) {
-    return executeQuery(async (supabase) => {
-      const { data, error } = await supabase
-        .from('exam_prep_sessions')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (error) {
-        console.error('❌ Session fetch error:', error);
-        return null;
-      }
-
-      return data;
-    });
-  },
-
-  /**
-   * Update session state based on conversation progress
-   */
-  async updateSessionState(sessionId, response) {
-    return executeQuery(async (supabase) => {
-      await supabase
-        .from('exam_prep_sessions')
-        .update({
-          session_state: {
-            step: response.conversation_state,
-            is_data_complete: response.is_data_complete,
-            last_updated: new Date().toISOString()
-          },
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', sessionId);
-    });
-  },
-
-  /**
-   * Generate study plan based on collected information
-   */
-  async generateStudyPlan(user, session) {
-    // Format exam date
-    let examDateDisplay = 'your upcoming test';
-    if (session.exam_date) {
-      const examDate = new Date(session.exam_date);
-      const now = new Date();
-      const daysUntilExam = Math.ceil((examDate - now) / (1000 * 60 * 60 * 24));
-
-      examDateDisplay =
-        daysUntilExam > 0 ? `your test in ${daysUntilExam} days` : 'your test today';
+    if (!['10', '11', '12'].includes(grade)) {
+      return {
+        message: `Please enter a valid grade: 10, 11, or 12.`,
+        conversation_complete: false
+      };
     }
 
-    // Format topics
-    const topics = session.focus_topics || [];
-    const topicsDisplay =
-      topics.length > 0 ? `focusing on ${topics.join(', ')}` : 'covering key concepts';
+    // Update user grade
+    await updateUser(user.id, {
+      grade: grade,
+      conversation_context: JSON.stringify({
+        ...context,
+        step: 'grade_collected',
+        grade: grade
+      })
+    });
 
-    // Create plan
-    return `📅 **YOUR PERSONALIZED STUDY PLAN**
+    return {
+      message:
+        `Great! Grade ${grade} it is. 🎓\n\n` +
+        `What subject is your exam in? (e.g., Mathematics, Physics, Chemistry)`,
+      conversation_complete: false
+    };
+  },
 
-I've created a daily study plan for ${examDateDisplay}, ${topicsDisplay}.
+  /**
+   * Handle subject input
+   */
+  async handleSubjectInput(user, message, context) {
+    const subject = message.trim();
 
-Your plan includes:
-• Daily lessons tailored to your needs
-• Practice questions to build confidence
-• Progress tracking to ensure mastery
+    // Update context
+    await updateUser(user.id, {
+      conversation_context: JSON.stringify({
+        ...context,
+        step: 'subject_collected',
+        subject: subject
+      })
+    });
 
-Your daily reminders will be sent at: ${session.preferred_time || '7:00 PM'}
+    return {
+      message:
+        `Perfect! ${subject} exam preparation. 📖\n\n` +
+        `When is your exam? (Please provide the date in YYYY-MM-DD format or say "next month")`,
+      conversation_complete: false
+    };
+  },
 
-Ready to start your first lesson? Just reply "yes" and we'll begin immediately!`;
+  /**
+   * Handle exam date input
+   */
+  async handleExamDateInput(user, message, context) {
+    const dateInput = message.trim().toLowerCase();
+
+    // Simple date parsing
+    let examDate;
+    if (dateInput.includes('next month') || dateInput.includes('month')) {
+      examDate = new Date();
+      examDate.setMonth(examDate.getMonth() + 1);
+    } else {
+      examDate = new Date(dateInput);
+      if (isNaN(examDate.getTime())) {
+        examDate = new Date();
+        examDate.setDate(examDate.getDate() + 30); // Default to 30 days
+      }
+    }
+
+    // Update context
+    await updateUser(user.id, {
+      conversation_context: JSON.stringify({
+        ...context,
+        step: 'completed',
+        exam_date: examDate.toISOString()
+      })
+    });
+
+    return this.completeConversation(user, {
+      ...context,
+      exam_date: examDate.toISOString()
+    });
+  },
+
+  /**
+   * Complete conversation
+   */
+  async completeConversation(user, context) {
+    const examDate = new Date(context.exam_date);
+    const daysUntilExam = Math.ceil((examDate - new Date()) / (1000 * 60 * 60 * 24));
+
+    return {
+      message:
+        `Excellent! I've gathered all the information I need. 🎯\n\n` +
+        `**Your Exam Details:**\n` +
+        `• Grade: ${context.grade}\n` +
+        `• Subject: ${context.subject}\n` +
+        `• Exam Date: ${examDate.toDateString()}\n` +
+        `• Days to prepare: ${daysUntilExam}\n\n` +
+        `I'm now creating your personalized study plan. This will take a moment...`,
+      conversation_complete: true,
+      shouldGeneratePlan: true
+    };
   }
 };
